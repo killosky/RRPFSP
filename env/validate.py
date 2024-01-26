@@ -83,13 +83,17 @@ if __name__ == "__main__":
             # print("______________________________")
         # print("ope_node_job", torch.nonzero(env_valid.ope_node_job_batch[0]))
         # print(env_valid.job_to_buf_flag_batch)
-        print("action: ", torch.nonzero(a), b)
+        # print("action: ", torch.nonzero(a), b)
         env_valid.step(action)
+        # print(env_valid.schedule_batch[0])
+        # print(env_valid.mas_left_proctime_batch)
+        # print("_______________________")
         # print(env_valid.done_batch)
         # print(env_valid.batch_idxes)
 
         # print("__________________________________________________________________________")
-
+    # print(env_valid.schedule_batch)
+    env_valid.render()
 
 
 

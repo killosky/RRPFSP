@@ -3,8 +3,13 @@ import torch
 import json
 import copy
 import os
+import random
 
 from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 
 from env.case_generate import ShopInfo, CaseGenerator, trans_time_generate, job_num_detec
 from env.load_data import load_rrpfsp
@@ -440,8 +445,10 @@ class RRPFSPEnv(gym.Env):
 
                             start_proc_time = self.time[i_batch] + self.feat_arc_ma_in_batch[
                                 i_batch, action_ope, action_station, 1]
-                            self.schedule_batch[i_batch][mas_idx].append(
-                                [action_job, start_proc_time, start_proc_time, start_proc_time])
+                            self.schedule_batch[i_batch][mas_idx].append([action_job.item(), start_proc_time.item(),
+                                                                          start_proc_time.item(),
+                                                                          start_proc_time.item()])
+                            # print("in_action", self.schedule_batch[i_batch])
 
                             add_time_batch[i_batch] = self.feat_arc_ma_in_batch[i_batch, action_ope, action_station, 1]
                             self.reward_batch[i_batch] += self.proc_time_batch[i_batch][action_job][action_ope]
@@ -473,7 +480,8 @@ class RRPFSPEnv(gym.Env):
                             start_proc_time = self.time[i_batch] + self.feat_arc_buf_in_batch[
                                 i_batch, action_ope, action_station-self.station_num-3, 1]
                             self.schedule_batch[i_batch][action_station-self.station_num-3].append(
-                                [action_job, start_proc_time, start_proc_time, start_proc_time])
+                                [action_job.item(), start_proc_time.item(),
+                                 start_proc_time.item(), start_proc_time.item()])
                             add_time_batch[i_batch] = self.feat_arc_buf_in_batch[
                                 i_batch, action_ope, action_station - self.station_num - 3, 1]
 
@@ -502,7 +510,9 @@ class RRPFSPEnv(gym.Env):
                             self.feat_job_batch[i_batch][
                                 action_job, 0] = self.proc_time_batch[i_batch][action_job][action_ope]
 
-                            self.schedule_batch[i_batch][mas_idx][-1][3] = self.time[i_batch]
+                            # print("-1 ", self.schedule_batch[i_batch][mas_idx][-1][3])
+                            # print(self.schedule_batch[i_batch])
+                            self.schedule_batch[i_batch][mas_idx][-1][3] = self.time[i_batch].item()
 
                             add_time_batch[i_batch] = self.feat_arc_ma_out_batch[
                                 i_batch, action_ope, action_station, 1]
@@ -523,9 +533,9 @@ class RRPFSPEnv(gym.Env):
                                 self.feat_ope_batch[i_batch, action_ope, 2] -= 1
                             if action_station > self.station_num:
                                 self.schedule_batch[i_batch][
-                                    action_station-self.station_num-3][-1][2] = self.time[i_batch]
+                                    action_station-self.station_num-3][-1][2] = self.time[i_batch].item()
                                 self.schedule_batch[i_batch][
-                                    action_station-self.station_num-3][-1][3] = self.time[i_batch]
+                                    action_station-self.station_num-3][-1][3] = self.time[i_batch].item()
 
                             add_time_batch[i_batch] = self.feat_arc_buf_out_batch[
                                 i_batch, action_ope, action_station-self.station_num-3, 1]
@@ -556,9 +566,17 @@ class RRPFSPEnv(gym.Env):
             mas_state_change_idx = torch.nonzero((self.mas_left_proctime_batch[i_batch] <= add_time_batch[i_batch])
                                                  & (self.mas_left_proctime_batch[i_batch] > 0))
 
+            # print(mas_state_change_idx)
             for i_change_mas_idx in mas_state_change_idx:
-                self.schedule_batch[i_batch][i_change_mas_idx][-1][2] = self.time[
-                        i_batch] + self.mas_left_proctime_batch[i_batch, mas_state_change_idx]
+                # print(i_change_mas_idx)
+                # print(self.time[i_batch])
+                # print(self.mas_left_proctime_batch[i_batch, i_change_mas_idx])
+                # print("fdas", self.schedule_batch[i_batch][i_change_mas_idx][-1])
+                # print("fasdf", self.schedule_batch[i_batch])
+                self.schedule_batch[i_batch][i_change_mas_idx][-1][2] = (self.time[
+                        i_batch] + self.mas_left_proctime_batch[i_batch, i_change_mas_idx]).item()
+                # print("fdsa", self.schedule_batch[i_batch])
+
 
             self.mas_state_batch[i_batch, mas_state_change_idx] = 2
             self.mas_left_proctime_batch[i_batch] -= add_time_batch[i_batch]
@@ -761,7 +779,6 @@ class RRPFSPEnv(gym.Env):
 
         return self.state, self.reward_batch, self.cum_reward_batch, self.done_batch
 
-
     def reset(self):
         """
         Reset the environment
@@ -820,9 +837,56 @@ class RRPFSPEnv(gym.Env):
         for batch_id in range(self.batch_size):
             num_jobs = self.num_jobs_batch[batch_id]
             if len(color) < num_jobs:
-                pass
+                num_append_color = num_jobs - len(color)
+                color += ['#' + ''.join([random.choice("0123456789ABCDEF") for _ in range(6)]) for c in
+                          range(num_append_color)]
+            with open(color_path, 'w', encoding='UTF-8') as fp:
+                fp.write(json.dumps({"gantt_color": color}, indent=2, ensure_ascii=False))
 
+            schedule = self.schedule_batch[batch_id]
+            fig = plt.figure()
+            fig.canvas.manager.set_window_title('Gantt Chart')
+            axes = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+            y_ticks = []
+            y_ticks_loc = []
+            for i in range(self.mas_num):
+                y_ticks.append('M {0}'.format(i))
+                y_ticks_loc.append(i)
+            labels = [''] * num_jobs
+            for j in range(num_jobs):
+                labels[j] = 'J {0}'.format(j)
+            patches = [mpatches.Patch(color=color[k], label="{:s}".format(labels[k])) for k in range(num_jobs)]
+            axes.cla()
+            axes.grid(linestyle='-.', color='gray', alpha=0.3)
+            axes.set_xlabel("Time")
+            axes.set_ylabel("Machine")
+            axes.set_yticks(y_ticks_loc, y_ticks)
+            axes.legend(handles=patches, loc=2)
+            axes.set_ybound(1 - 1 / self.mas_num, self.mas_num + 1 / self.mas_num)
+            # axes.set_xlim(0, 550)
 
+            for i_mas in range(self.mas_num):
+                # print(schedule[i_mas])
+                for proc_idx in schedule[i_mas]:
+                    # print(proc_idx)
+                    axes.barh(i_mas,
+                              proc_idx[2] - proc_idx[1],
+                              left=proc_idx[1],
+                              color=color[proc_idx[0]],
+                              edgecolor=color[proc_idx[0]],
+                              alpha=1,
+                              height=0.5)
+                    axes.barh(i_mas,
+                              proc_idx[3] - proc_idx[2],
+                              left=proc_idx[2],
+                              color=color[proc_idx[0]],
+                              edgecolor=color[proc_idx[0]],
+                              alpha=0.3,
+                              height=0.5)
+
+        plt.show()
+
+        return
 
     def validate_gantt(self):
         """
