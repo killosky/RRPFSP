@@ -607,6 +607,18 @@ class RRPFSPEnv(gym.Env):
                         self.ope_node_job_batch[i_batch][
                             self.job_next_ope[i_batch][i_job_on_robot], i_job_on_robot, 1] = 0
 
+                        num_idle_mas = 0
+                        for idx_mas_last_ope in range(self.ope_num-1):
+                            if self.routing[idx_mas_last_ope + 1] == self.routing[
+                                                                            self.job_next_ope[i_batch][i_job_on_robot]]:
+                                if 0 < self.feat_ope_batch[i_batch, idx_mas_last_ope, 6] <= self.proc_time_batch[
+                                                i_batch][i_job_on_robot][self.job_next_ope[i_batch][i_job_on_robot]]:
+                                    num_idle_mas += 1
+                        if num_idle_mas <= self.feat_mas_batch[i_batch, self.routing[
+                                                                    self.job_next_ope[i_batch][i_job_on_robot]]-1, 0]:
+                            self.ope_node_job_batch[i_batch][
+                                self.job_next_ope[i_batch][i_job_on_robot], i_job_on_robot, 1] = 0
+
             job_on_mas_finish_idx = self.job_loc_batch[i_batch] * (
                     self.job_state_batch[i_batch] == 2).long().unsqueeze(-1)
             job_on_mas_finish_idx[:, -1] = 0
@@ -711,16 +723,33 @@ class RRPFSPEnv(gym.Env):
                     # print(job_on_robot_idx)
                     # print("a", self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap)
                     # print("a", self.job_to_buf_flag_batch[i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]])
-                if self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap and self.job_to_buf_flag_batch[i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
-                    # if i_job_on_robot == 3:
-                        # print("aa", self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap)
-                        # print("aa", self.job_to_buf_flag_batch[i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]])
+                if self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap and self.job_to_buf_flag_batch[i_batch][
+                    i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]] and self.ope_node_job_batch[i_batch][
+                                                    self.job_next_ope[i_batch][i_job_on_robot]][i_job_on_robot][1] == 1:
                     self.mask_buf_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_robot], 1, 0] = True
                     self.mask_job_batch[i_batch][i_job_on_robot] = True
+                    # num_idle_mas = self.feat_mas_batch[
+                        # i_batch, self.routing[self.job_next_ope[i_batch][i_job_on_robot]]-1, 0].item()
+                    # num_idle_mas = 0
+                    # for idx_mas_last_ope in range(self.ope_num-1):
+                    #     if self.routing[idx_mas_last_ope + 1] == self.routing[self.job_next_ope[i_batch][i_job_on_robot]]:
+                    #         if 0 < self.feat_ope_batch[i_batch, idx_mas_last_ope, 6] <= self.proc_time_batch[i_batch][i_job_on_robot][self.job_next_ope[i_batch][i_job_on_robot]]:
+                    #             num_idle_mas += 1
+                    # if num_idle_mas < self.feat_mas_batch[i_batch, self.routing[self.job_next_ope[i_batch][i_job_on_robot]]-1, 0]:
+                    #     self.mask_buf_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_robot], 1, 0] = True
+
                 if self.job_next_ope[i_batch][i_job_on_robot] == self.ope_num:
                     self.mask_buf_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_robot], 2, 0] = True
                     self.mask_job_batch[i_batch][i_job_on_robot] = True
 
+
+
+            # in-buffer limit
+            # for i_ope_buffer in range(self.ope_num-1):
+                # if self.mask_buf_arc_batch[i_batch, i_ope_buffer, 1, 0]:
+
+
+            # policy for avoiding deadlock
             if job_on_robot_idx.size(0) < self.trans_cap:
                 for i_job_on_mas_finish in job_on_mas_finish_idx:
                     self.mask_mas_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_mas_finish], self.routing[
@@ -738,8 +767,11 @@ class RRPFSPEnv(gym.Env):
                                 if self.feat_mas_batch[i_batch, self.routing[
                                                                 self.job_next_ope[i_batch][i_job_on_robot]] - 1, 0] > 0:
                                     flag_mask = False
-                                elif self.job_to_buf_flag_batch[
-                                        i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
+                                # elif self.job_to_buf_flag_batch[
+                                        # i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
+                                elif self.ope_node_job_batch[i_batch][self.job_next_ope[i_batch][i_job_on_robot]][
+                                                    i_job_on_robot][1] == 1 and self.job_to_buf_flag_batch[i_batch][
+                                                            i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
                                     flag_mask = False
                             if ~flag_mask:
                                 break
