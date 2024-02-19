@@ -84,7 +84,6 @@ if __name__ == "__main__":
         # print("ope_node_job", torch.nonzero(env_valid.ope_node_job_batch[0]))
         # print(env_valid.job_to_buf_flag_batch)
         # if torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]).size(0) > 0:
-        print(torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]))
         # print("action: ", torch.nonzero(a), b)
         env_valid.step(action)
 
@@ -95,8 +94,8 @@ if __name__ == "__main__":
         # print(env_valid.batch_idxes)
 
         # print("__________________________________________________________________________")
-    # print(env_valid.schedule_batch)
-    env_valid.render()
+    # print(env_valid.job_schedule_batch)
+    env_valid.render(job_flag=True)
 
 
 

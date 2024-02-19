@@ -190,6 +190,7 @@ class RRPFSPEnv(gym.Env):
         self.done_job_batch = []
         self.ope_node_job_batch = []
         self.job_to_buf_flag_batch = []
+        self.job_schedule_batch = []
 
         for i_batch_case in range(self.batch_size):
             proc_time_matrix = load_rrpfsp(lines[i_batch_case], shop_info, device=self.device)
@@ -237,6 +238,11 @@ class RRPFSPEnv(gym.Env):
                 size=(self.num_jobs_batch[i_batch_case], self.ope_num+1), device=self.device, dtype=torch.bool)
             job_to_buf_flag[:, 0] = job_to_buf_flag[:, -1] = False
             self.job_to_buf_flag_batch.append(job_to_buf_flag)
+
+            job_schedule = []
+            for _ in range(self.num_jobs_batch[i_batch_case]):
+                job_schedule.append([])
+            self.job_schedule_batch.append(job_schedule)
 
         self.robot_loc_batch = torch.zeros(size=(self.batch_size, self.station_num+3), device=self.device)
         self.robot_loc_batch[:, self.station_num] = 1
@@ -449,6 +455,9 @@ class RRPFSPEnv(gym.Env):
                                                                           start_proc_time.item(),
                                                                           start_proc_time.item()])
                             # print("in_action", self.schedule_batch[i_batch])
+                            self.job_schedule_batch[i_batch][action_job].append([mas_idx, start_proc_time.item(),
+                                                                                 start_proc_time.item(),
+                                                                                 start_proc_time.item()])
 
                             add_time_batch[i_batch] = self.feat_arc_ma_in_batch[i_batch, action_ope, action_station, 1]
                             self.reward_batch[i_batch] += self.proc_time_batch[i_batch][action_job][action_ope]
@@ -482,6 +491,9 @@ class RRPFSPEnv(gym.Env):
                             self.schedule_batch[i_batch][action_station-self.station_num-3].append(
                                 [action_job.item(), start_proc_time.item(),
                                  start_proc_time.item(), start_proc_time.item()])
+                            self.job_schedule_batch[i_batch][action_job].append([
+                                action_station-self.station_num+self.mas_num, start_proc_time.item(),
+                                start_proc_time.item(), start_proc_time.item()])
                             add_time_batch[i_batch] = self.feat_arc_buf_in_batch[
                                 i_batch, action_ope, action_station - self.station_num - 3, 1]
 
@@ -512,7 +524,11 @@ class RRPFSPEnv(gym.Env):
 
                             # print("-1 ", self.schedule_batch[i_batch][mas_idx][-1][3])
                             # print(self.schedule_batch[i_batch])
-                            self.schedule_batch[i_batch][mas_idx][-1][3] = self.time[i_batch].item()
+                            self.schedule_batch[i_batch][mas_idx][-1][3] = self.time[i_batch].item() + \
+                                self.feat_arc_ma_out_batch[i_batch, action_ope, action_station, 1]
+                            self.job_schedule_batch[i_batch][action_job][-1][3] = self.time[i_batch].item() + \
+                                self.feat_arc_ma_out_batch[i_batch, action_ope, action_station, 1]
+
 
                             add_time_batch[i_batch] = self.feat_arc_ma_out_batch[
                                 i_batch, action_ope, action_station, 1]
@@ -536,6 +552,8 @@ class RRPFSPEnv(gym.Env):
                                     action_station-self.station_num-3][-1][2] = self.time[i_batch].item()
                                 self.schedule_batch[i_batch][
                                     action_station-self.station_num-3][-1][3] = self.time[i_batch].item()
+                                self.job_schedule_batch[i_batch][action_job][-1][2] = self.time[i_batch].item()
+                                self.job_schedule_batch[i_batch][action_job][-1][3] = self.time[i_batch].item()
 
                             add_time_batch[i_batch] = self.feat_arc_buf_out_batch[
                                 i_batch, action_ope, action_station-self.station_num-3, 1]
@@ -577,21 +595,24 @@ class RRPFSPEnv(gym.Env):
                         i_batch] + self.mas_left_proctime_batch[i_batch, i_change_mas_idx]).item()
                 # print("fdsa", self.schedule_batch[i_batch])
 
-
             self.mas_state_batch[i_batch, mas_state_change_idx] = 2
             self.mas_left_proctime_batch[i_batch] -= add_time_batch[i_batch]
             self.mas_left_proctime_batch[i_batch] = torch.clamp(self.mas_left_proctime_batch[i_batch], min=0)
 
             self.reward_batch[i_batch] += torch.sum(self.mas_left_proctime_batch[i_batch, :])
 
+            job_state_change_idx = torch.nonzero(
+                self.job_loc_ma_batch[i_batch][:, mas_state_change_idx], as_tuple=True)[0]
+            for i_job_state_change_idx in job_state_change_idx:
+                self.job_schedule_batch[i_batch][i_job_state_change_idx][-1][2] = (
+                        self.time[i_batch] + self.left_proc_time_batch[i_batch][i_job_state_change_idx][
+                            self.job_next_ope[i_batch][i_job_state_change_idx]]).item()
+
             procing_job_idxes = torch.nonzero(self.job_state_batch[i_batch] == 1).squeeze()
             self.left_proc_time_batch[i_batch][
                 procing_job_idxes, self.job_next_ope[i_batch][procing_job_idxes]] -= add_time_batch[i_batch]
             self.left_proc_time_batch[i_batch][procing_job_idxes] = torch.clamp(self.left_proc_time_batch[i_batch][
                 procing_job_idxes], min=0)
-
-            job_state_change_idx = torch.nonzero(
-                self.job_loc_ma_batch[i_batch][:, mas_state_change_idx], as_tuple=True)[0]
 
             self.job_next_ope[i_batch][job_state_change_idx] += 1
             self.job_state_batch[i_batch][job_state_change_idx] = 2
@@ -701,12 +722,21 @@ class RRPFSPEnv(gym.Env):
                     if torch.nonzero(self.ope_node_job_batch[i_batch][i_ope, :, 3]).size(0) != 0 else 0
 
             self.feat_arc_ma_in_batch[i_batch, :, :, 1] = self.trans_time[torch.nonzero(
-                self.robot_loc_batch[i_batch, :]).squeeze(-1), None, :].squeeze(0).T + self.unload_time
+                self.robot_loc_batch[i_batch, :]), :self.station_num].squeeze(0) + self.unload_time
             self.feat_arc_ma_in_batch[i_batch, :, :, 2] = torch.sum(self.feat_ope_batch[i_batch, :, 1])
 
             self.feat_arc_ma_out_batch[i_batch, :, :, 1] = self.trans_time[torch.nonzero(
-                self.robot_loc_batch[i_batch, :]).squeeze(-1), None, :].squeeze(0).T + self.load_time
+                self.robot_loc_batch[i_batch, :]), :self.station_num].squeeze(0) + self.load_time
             self.feat_arc_ma_out_batch[i_batch, :, :, 2] = torch.sum(self.feat_ope_batch[i_batch, :, 1])
+
+            self.feat_arc_buf_in_batch[i_batch, :, :, 1] = self.trans_time[torch.nonzero(
+                self.robot_loc_batch[i_batch, :]).squeeze(-1), -3:].squeeze(0) + self.unload_time
+            self.feat_arc_buf_in_batch[i_batch, :, :, 2] = torch.sum(self.feat_ope_batch[i_batch, :, 1])
+
+            self.feat_arc_buf_out_batch[i_batch, :, :, 1] = self.trans_time[torch.nonzero(
+                self.robot_loc_batch[i_batch, :]).squeeze(-1), -3:].squeeze(0) + self.load_time
+            self.feat_arc_buf_out_batch[i_batch, :, :, 2] = torch.sum(self.feat_ope_batch[i_batch, :, 1])
+
 
             self.mask_mas_arc_batch[i_batch] = False
             self.mask_buf_arc_batch[i_batch] = False
@@ -742,12 +772,9 @@ class RRPFSPEnv(gym.Env):
                     self.mask_buf_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_robot], 2, 0] = True
                     self.mask_job_batch[i_batch][i_job_on_robot] = True
 
-
-
             # in-buffer limit
             # for i_ope_buffer in range(self.ope_num-1):
                 # if self.mask_buf_arc_batch[i_batch, i_ope_buffer, 1, 0]:
-
 
             # policy for avoiding deadlock
             if job_on_robot_idx.size(0) < self.trans_cap:
@@ -783,6 +810,7 @@ class RRPFSPEnv(gym.Env):
                                     i_batch, self.job_next_ope[i_batch][i_job_on_buf_idle], torch.nonzero(
                                         self.job_loc_batch[i_batch][i_job_on_buf_idle, :]).squeeze(
                                         -1) - self.station_num, 1] = False
+
 
             if torch.sum(self.feat_mas_batch[i_batch, :, 2]) == 0.:
                 self.mask_wait_batch[i_batch] = False
@@ -851,6 +879,14 @@ class RRPFSPEnv(gym.Env):
             schedule_batch.append(schedule)
         self.schedule_batch = schedule_batch
 
+        job_schedule_batch = []
+        for i_batch_case in range(self.batch_size):
+            job_schedule = []
+            for _ in range(self.num_jobs_batch[i_batch_case]):
+                job_schedule.append([])
+            job_schedule_batch.append(job_schedule)
+        self.job_schedule_batch = job_schedule_batch
+
         self.time = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
         self.makespan_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
         self.done_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.bool)
@@ -858,7 +894,7 @@ class RRPFSPEnv(gym.Env):
         self.reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
         self.cum_reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
 
-    def render(self, mode='human'):
+    def render(self, mode='human', job_flag=False):
         """
         Render the environment
         """
@@ -875,48 +911,107 @@ class RRPFSPEnv(gym.Env):
             with open(color_path, 'w', encoding='UTF-8') as fp:
                 fp.write(json.dumps({"gantt_color": color}, indent=2, ensure_ascii=False))
 
-            schedule = self.schedule_batch[batch_id]
-            fig = plt.figure()
-            fig.canvas.manager.set_window_title('Gantt Chart')
-            axes = fig.add_axes([0.1, 0.1, 0.8, 0.8])
-            y_ticks = []
-            y_ticks_loc = []
-            for i in range(self.mas_num):
-                y_ticks.append('M {0}'.format(i))
-                y_ticks_loc.append(i)
-            labels = [''] * num_jobs
-            for j in range(num_jobs):
-                labels[j] = 'J {0}'.format(j)
-            patches = [mpatches.Patch(color=color[k], label="{:s}".format(labels[k])) for k in range(num_jobs)]
-            axes.cla()
-            axes.grid(linestyle='-.', color='gray', alpha=0.3)
-            axes.set_xlabel("Time")
-            axes.set_ylabel("Machine")
-            axes.set_yticks(y_ticks_loc, y_ticks)
-            axes.legend(handles=patches, loc=2)
-            axes.set_ybound(1 - 1 / self.mas_num, self.mas_num + 1 / self.mas_num)
-            # axes.set_xlim(0, 550)
+            if job_flag:
+                schedule = self.job_schedule_batch[batch_id]
+                fig = plt.figure()
+                fig.canvas.manager.set_window_title('Gantt Chart')
+                axes = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+                y_ticks = []
+                y_ticks_loc = []
+                for i in range(num_jobs):
+                    y_ticks.append('J {0}'.format(i))
+                    y_ticks_loc.append(i)
+                labels = [''] * (self.mas_num + 1)
+                for j in range(self.mas_num):
+                    labels[j] = 'M {0}'.format(j)
+                labels[-1] = 'Buffer'
+                patches = [
+                    mpatches.Patch(color=color[k], label="{:s}".format(labels[k])) for k in range(self.mas_num+1)]
+                axes.cla()
+                axes.grid(linestyle='-.', color='gray', alpha=0.3)
+                axes.set_xlabel("Time")
+                axes.set_ylabel("Job")
+                axes.set_yticks(y_ticks_loc, y_ticks)
+                axes.legend(handles=patches, loc=2)
+                axes.set_ybound(1 - 1 / num_jobs, num_jobs + 1 / num_jobs)
+                for i_job in range(num_jobs):
+                    for proc_idx in schedule[i_job]:
+                        if proc_idx[0] < self.mas_num:
+                            axes.barh(i_job,
+                                      proc_idx[2]-proc_idx[1],
+                                      left=proc_idx[1],
+                                      color=color[proc_idx[0]],
+                                      # edgecolor=color[proc_idx[0]],
+                                      alpha=1,
+                                      height=0.5)
+                            axes.barh(i_job,
+                                      proc_idx[3] - proc_idx[2],
+                                      left=proc_idx[2],
+                                      color=color[proc_idx[0]],
+                                      # edgecolor=color[proc_idx[0]],
+                                      alpha=0.3,
+                                      height=0.5)
+                        elif proc_idx[0] == self.mas_num+1:
+                            axes.barh(i_job,
+                                      proc_idx[2] - proc_idx[1],
+                                      left=proc_idx[1],
+                                      color=color[-1],
+                                      # edgecolor=color[-1],
+                                      alpha=1,
+                                      height=0.5)
+                            axes.barh(i_job,
+                                      proc_idx[3] - proc_idx[2],
+                                      left=proc_idx[2],
+                                      color=color[-1],
+                                      # edgecolor=color[-1],
+                                      alpha=0.3,
+                                      height=0.5)
 
-            for i_mas in range(self.mas_num):
-                # print(schedule[i_mas])
-                for proc_idx in schedule[i_mas]:
-                    # print(proc_idx)
-                    axes.barh(i_mas,
-                              proc_idx[2] - proc_idx[1],
-                              left=proc_idx[1],
-                              color=color[proc_idx[0]],
-                              edgecolor=color[proc_idx[0]],
-                              alpha=1,
-                              height=0.5)
-                    axes.barh(i_mas,
-                              proc_idx[3] - proc_idx[2],
-                              left=proc_idx[2],
-                              color=color[proc_idx[0]],
-                              edgecolor=color[proc_idx[0]],
-                              alpha=0.3,
-                              height=0.5)
 
-        plt.show()
+            else:
+                schedule = self.schedule_batch[batch_id]
+                fig = plt.figure()
+                fig.canvas.manager.set_window_title('Gantt Chart')
+                axes = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+                y_ticks = []
+                y_ticks_loc = []
+                for i in range(self.mas_num):
+                    y_ticks.append('M {0}'.format(i))
+                    y_ticks_loc.append(i)
+                labels = [''] * num_jobs
+                for j in range(num_jobs):
+                    labels[j] = 'J {0}'.format(j)
+                patches = [mpatches.Patch(color=color[k], label="{:s}".format(labels[k])) for k in range(num_jobs)]
+                axes.cla()
+                axes.grid(linestyle='-.', color='gray', alpha=0.3)
+                axes.set_xlabel("Time")
+                axes.set_ylabel("Machine")
+                axes.set_yticks(y_ticks_loc, y_ticks)
+                axes.legend(handles=patches, loc=2)
+                axes.set_ybound(1 - 1 / self.mas_num, self.mas_num + 1 / self.mas_num)
+                # axes.set_xlim(0, 550)
+
+                for i_mas in range(self.mas_num):
+                    # print(schedule[i_mas])
+                    for proc_idx in schedule[i_mas]:
+                        # print(proc_idx)
+                        axes.barh(i_mas,
+                                  proc_idx[2] - proc_idx[1],
+                                  left=proc_idx[1],
+                                  color=color[proc_idx[0]],
+                                  edgecolor=color[proc_idx[0]],
+                                  alpha=1,
+                                  height=0.5)
+                        axes.barh(i_mas,
+                                  proc_idx[3] - proc_idx[2],
+                                  left=proc_idx[2],
+                                  color=color[proc_idx[0]],
+                                  edgecolor=color[proc_idx[0]],
+                                  alpha=0.3,
+                                  height=0.5)
+
+            plt.savefig('1.svg')
+            plt.show()
 
         return
 
