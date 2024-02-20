@@ -168,10 +168,10 @@ class RRPFSPEnv(gym.Env):
 
         self.ope_buf_adj = torch.zeros(size=(self.ope_num+1, 3), device=self.device)
         self.ope_buf_adj[self.ope_num][2] = 1
-        self.ope_buf_adj[:self.ope_num, 1] = 1
+        self.ope_buf_adj[1:self.ope_num, 1] = 1
         self.ope_buf_adj_out = torch.zeros(size=(self.ope_num+1, 3), device=self.device)
         self.ope_buf_adj_out[0][0] = 1
-        self.ope_buf_adj_out[:self.ope_num, 1] = 1
+        self.ope_buf_adj_out[1:self.ope_num, 1] = 1
 
         # machines feature
         self.mas_state_batch = torch.zeros(size=(self.batch_size, self.mas_num), device=self.device, dtype=torch.long)
