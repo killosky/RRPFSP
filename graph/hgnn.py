@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import Identity
 import torch.nn.functional as F
 
+
 class GATedge(nn.Module):
     """
     Machine node embedding
@@ -14,8 +15,7 @@ class GATedge(nn.Module):
                  feat_drop=0.,
                  attn_drop=0.,
                  negative_slope=0.2,
-                 device=torch.device("cpu"),
-                 activation=None):
+                 device=torch.device("cuda")):
         """
         :param in_feats: tuple, input dimension of (operation node, machine node, arc)
         :param out_feats: output dimension of the embedded machine node features
@@ -66,16 +66,16 @@ class GATedge(nn.Module):
                         feat_arc_ma_out_batch, feat_arc_buf_out_batch)
         """
         # dropout for operation node, machine node and arc respectively
-        h_opes = self.feat_drop(feat[0])    # size: batch_size * num_opes * in_feats[0]
-        h_mas = self.feat_drop(feat[1])    # size: batch_size * num_stations * in_feats[1]
-        h_buf = self.feat_drop(feat[2])    # size: batch_size * num_stations * in_feats[1]
+        h_opes = self.feat_drop(feat[0])
+        h_mas = self.feat_drop(feat[1])
+        h_buf = self.feat_drop(feat[2])
         h_arc_ma_in = self.feat_drop(feat[3])
         h_arc_buf_in = self.feat_drop(feat[4])
         h_arc_ma_out = self.feat_drop(feat[5])
         h_arc_buf_out = self.feat_drop(feat[6])
 
-        feat_ope = self.fc_ope(h_opes)    # size: batch_size * num_opes * out_feats
-        feat_mas = self.fc_mas(h_mas)    # size: batch_size * num_opes * out_feats
+        feat_ope = self.fc_ope(h_opes)
+        feat_mas = self.fc_mas(h_mas)
         feat_buf = self.fc_buf(h_buf)
         feat_arc_ma_in = self.fc_arc_in(h_arc_ma_in)
         feat_arc_buf_in = self.fc_arc_in(h_arc_buf_in)
@@ -83,11 +83,11 @@ class GATedge(nn.Module):
         feat_arc_buf_out = self.fc_arc_out(h_arc_buf_out)
 
         # Calculate attention coefficient
-        e_ope = (feat_ope * self.attn_ope).sum(dim=-1).unsqueeze(-1)    # size: batch_size * num_opes * 1
-        e_mas = (feat_mas * self.attn_mas).sum(dim=-1).unsqueeze(-1)    # size: batch_size * num_stations * 1
-        e_buf = (feat_buf * self.attn_mas).sum(dim=-1).unsqueeze(-1)    # size: batch_size * 3 * 1
-        e_arc_ma_in = (feat_arc_ma_in * self.attn_arc).sum(dim=-1).unsqueeze(-1)    # size: batch_size * num_opes * num_stations * 1
-        e_arc_buf_in = (feat_arc_buf_in * self.attn_arc).sum(dim=-1).unsqueeze(-1)    # size: batch_size * num_opes * 3 * 1
+        e_ope = (feat_ope * self.attn_ope).sum(dim=-1).unsqueeze(-1)
+        e_mas = (feat_mas * self.attn_mas).sum(dim=-1).unsqueeze(-1)
+        e_buf = (feat_buf * self.attn_mas).sum(dim=-1).unsqueeze(-1)
+        e_arc_ma_in = (feat_arc_ma_in * self.attn_arc).sum(dim=-1).unsqueeze(-1)
+        e_arc_buf_in = (feat_arc_buf_in * self.attn_arc).sum(dim=-1).unsqueeze(-1)
         e_arc_ma_out = (feat_arc_ma_out * self.attn_arc).sum(dim=-1).unsqueeze(-1)
         e_arc_buf_out = (feat_arc_buf_out * self.attn_arc).sum(dim=-1).unsqueeze(-1)
 
@@ -102,7 +102,7 @@ class GATedge(nn.Module):
 
         # Normalize attention scores using softmax
         mask_in = torch.cat((adj[0].unsqueeze(-1) == 1, torch.full(
-            size=(1, adj[0].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3)\
+            size=(1, adj[0].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3) \
             .unsqueeze(0).expand(batch_idxes.size(0), -1, -1, -1)
         mask_out = torch.cat((adj[1].unsqueeze(-1) == 1, torch.full(
             size=(1, adj[1].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3) \
@@ -133,7 +133,7 @@ class GATedge(nn.Module):
         ekk_buf = self.leaky_relu(e_buf + e_buf)
 
         mask_buf_in = torch.cat((adj[2].unsqueeze(-1) == 1, torch.full(
-            size=(1, adj[2].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3)\
+            size=(1, adj[2].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3) \
             .unsqueeze(0).expand(batch_idxes.size(0), -1, -1, -1)
         mask_buf_out = torch.cat((adj[3].unsqueeze(-1) == 1, torch.full(
             size=(1, adj[3].size(1), 1), dtype=torch.bool, fill_value=True, device=self.device)), dim=-3) \
@@ -157,8 +157,49 @@ class GATedge(nn.Module):
         return nu_k_prime, nu_k_buf_prime
 
 
+class MLPsim(nn.Module):
+    """
+    Part of operation node embedding
+    """
+    def __init__(self,
+                 in_feats,
+                 out_feats,
+                 hidden_dim,
+                 num_head,
+                 feat_drop=0.,
+                 attn_drop=0.,
+                 negative_slope=0.2,
+                 device=torch.device("cuda")):
+        """
+        :param in_feats: Dimension of the input vectors of the MLPs
+        :param out_feats: Dimension of the output (operation embedding) of the MLPs
+        :param hidden_dim: Hidden dimensions of the MLPs
+        """
+        super(MLPsim, self).__init__()
+        self.device = device
 
+        self._num_heads = num_head
+        self._in_feats = in_feats
+        self._out_feats = out_feats
 
+        self.feat_drop = nn.Dropout(feat_drop)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.leaky_relu = nn.LeakyReLU(negative_slope)
 
+        self.project = nn.Sequential(
+            nn.Linear(self._in_feats, hidden_dim),
+            nn.ELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ELU(),
+            nn.Linear(hidden_dim, self._out_feats * self._num_heads)
+        )
 
+    def forward(self, feat, adj):
+        """
+        forward propagation
+        """
+        a = adj.unsqueeze(-1) * feat.unsqueeze(-3)
+        b = torch.sum(a, dim=-2)
+        c = self.project(b)
 
+        return c
