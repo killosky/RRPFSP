@@ -74,7 +74,8 @@ class MLPs(nn.Module):
         return mu_i_prime
 
 
-def get_normalized(raw_opes, raw_mas, raw_buf, raw_job, batch_idxes):
+def get_normalized(raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_ma_out,
+                   raw_arc_buf_in, raw_arc_buf_out, raw_job, batch_idxes):
     """
     Normalized time variable in feats, including operations, machines and arcs feats.
     """
@@ -84,6 +85,14 @@ def get_normalized(raw_opes, raw_mas, raw_buf, raw_job, batch_idxes):
     std_mas = torch.std(raw_mas, dim=-2, keepdim=True)
     mean_buf = torch.mean(raw_buf, dim=-2, keepdim=True)
     std_buf = torch.std(raw_buf, dim=-2, keepdim=True)
+    mean_arc_ma_in = torch.mean(raw_arc_ma_in, dim=(1, 2), keepdim=True)
+    std_arc_ma_in = torch.std(raw_arc_ma_in, dim=(1, 2), keepdim=True)
+    mean_arc_ma_out = torch.mean(raw_arc_ma_out, dim=(1, 2), keepdim=True)
+    std_arc_ma_out = torch.std(raw_arc_ma_out, dim=(1, 2), keepdim=True)
+    mean_arc_buf_in = torch.mean(raw_arc_buf_in, dim=(1, 2), keepdim=True)
+    std_arc_buf_in = torch.std(raw_arc_buf_in, dim=(1, 2), keepdim=True)
+    mean_arc_buf_out = torch.mean(raw_arc_buf_out, dim=(1, 2), keepdim=True)
+    std_arc_buf_out = torch.std(raw_arc_buf_out, dim=(1, 2), keepdim=True)
 
     feat_job_normalized = []
     for i_idxes in range(len(batch_idxes)):
@@ -91,8 +100,14 @@ def get_normalized(raw_opes, raw_mas, raw_buf, raw_job, batch_idxes):
         std_jobs = torch.std(raw_job[i_idxes], dim=-2, keepdim=True)
         feat_job_normalized.append((raw_job[i_idxes] - mean_jobs) / (std_jobs + 1e-5))
 
-    return ((raw_opes - mean_opes) / (std_opes + 1e-5), (raw_mas - mean_mas) / (std_mas + 1e-5),
-            (raw_buf - mean_buf) / (std_buf + 1e-5), feat_job_normalized)
+    return ((raw_opes - mean_opes) / (std_opes + 1e-5),
+            (raw_mas - mean_mas) / (std_mas + 1e-5),
+            (raw_buf - mean_buf) / (std_buf + 1e-5),
+            (raw_arc_ma_in - mean_arc_ma_in) / (std_arc_ma_in + 1e-5),
+            (raw_arc_ma_out - mean_arc_ma_out) / (std_arc_ma_out + 1e-5),
+            (raw_arc_buf_in - mean_arc_buf_in) / (std_arc_buf_in + 1e-5),
+            (raw_arc_buf_out - mean_arc_buf_out) / (std_arc_buf_out + 1e-5),
+            feat_job_normalized)
 
 
 class HGNNScheduler(nn.Module):
@@ -154,5 +169,40 @@ class HGNNScheduler(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def get_arc_prob(self):
-        pass
+    def get_arc_prob(self, state, memories, flag_sample=False):
+        """
+        Get the probability of each arc in decision-making
+        """
+        # Uncompleted instances
+        batch_idxes = state.batch_idxes
+
+        # Raw features
+        raw_opes = state.feat_opes_batch[batch_idxes]
+        raw_mas = state.feat_mas_batch[batch_idxes]
+        raw_buf = state.feat_buf_batch[batch_idxes]
+        raw_arc_ma_in = state.feat_arc_ma_in_batch[batch_idxes]
+        raw_arc_ma_out = state.feat_arc_ma_out_batch[batch_idxes]
+        raw_arc_buf_in = state.feat_arc_buf_in_batch[batch_idxes]
+        raw_arc_buf_out = state.feat_arc_buf_out_batch[batch_idxes]
+
+        # Normalized input features
+        opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_ma_out_norm, arc_buf_in_norm, arc_buf_out_norm, job_norm = \
+            get_normalized(raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_ma_out, raw_arc_buf_in, raw_arc_buf_out,
+                           state.feat_job_batch, batch_idxes)
+
+        # L iterations of HGNN
+        features = (opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_buf_in_norm, arc_ma_out_norm, arc_buf_out_norm)
+        adj = (state.ope_ma_adj, state.ope_ma_adj_out, state.ope_buf_adj, state.ope_buf_adj_out)
+        for i_layer_hgnn in range(self.n_layers_hgnn):
+            # Machine node embedding
+            h_mas, h_buf = self.get_machines[i_layer_hgnn](adj, batch_idxes, features)
+            features = (features[0], h_mas, h_buf, features[3], features[4], features[5], features[6])
+            # Operation node embedding
+            h_opes = self.get_operations[i_layer_hgnn](adj, batch_idxes, features)
+            features = (h_opes, features[1], features[2], features[3], features[4], features[5], features[6])
+
+        # Stacking and polling
+
+
+
+
