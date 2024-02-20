@@ -8,6 +8,7 @@ class GATedge(nn.Module):
     """
     Machine node embedding
     """
+
     def __init__(self,
                  in_feats,
                  out_feats,
@@ -161,6 +162,7 @@ class MLPsim(nn.Module):
     """
     Part of operation node embedding
     """
+
     def __init__(self,
                  in_feats,
                  out_feats,
