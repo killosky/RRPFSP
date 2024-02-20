@@ -63,6 +63,7 @@ class GATedge(nn.Module):
         """
         forward propagation
         :param adj: (ope_ma_adj, ope_ma_adj_out, ope_buf_adj, ope_buf_adj_out)
+        :param batch_idxes: batch index
         :param feat: (feat_opes_batch, feat_mas_batch, feat_buf_batch, feat_arc_ma_in_batch, feat_arc_buf_in_batch,
                         feat_arc_ma_out_batch, feat_arc_buf_out_batch)
         """

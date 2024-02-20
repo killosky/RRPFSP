@@ -162,9 +162,9 @@ class RRPFSPEnv(gym.Env):
 
         self.ope_ma_adj = torch.zeros(size=(self.ope_num+1, self.station_num), device=self.device)
         self.ope_ma_adj_out = torch.zeros(size=(self.ope_num+1, self.station_num), device=self.device)
-        for i in range(self.ope_num):
-            self.ope_ma_adj[i][self.routing[i]-1] = 1
-            self.ope_ma_adj_out[i+1][self.routing[i]-1] = 1
+        for i_ope in range(self.ope_num):
+            self.ope_ma_adj[i_ope][self.routing[i_ope]-1] = 1
+            self.ope_ma_adj_out[i_ope+1][self.routing[i_ope]-1] = 1
 
         self.ope_buf_adj = torch.zeros(size=(self.ope_num+1, 3), device=self.device)
         self.ope_buf_adj[self.ope_num][2] = 1
@@ -529,7 +529,6 @@ class RRPFSPEnv(gym.Env):
                             self.job_schedule_batch[i_batch][action_job][-1][3] = self.time[i_batch].item() + \
                                 self.feat_arc_ma_out_batch[i_batch, action_ope, action_station, 1]
 
-
                             add_time_batch[i_batch] = self.feat_arc_ma_out_batch[
                                 i_batch, action_ope, action_station, 1]
 
@@ -810,7 +809,6 @@ class RRPFSPEnv(gym.Env):
                                     i_batch, self.job_next_ope[i_batch][i_job_on_buf_idle], torch.nonzero(
                                         self.job_loc_batch[i_batch][i_job_on_buf_idle, :]).squeeze(
                                         -1) - self.station_num, 1] = False
-
 
             if torch.sum(self.feat_mas_batch[i_batch, :, 2]) == 0.:
                 self.mask_wait_batch[i_batch] = False

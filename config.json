@@ -1,0 +1,42 @@
+{
+  "shop_paras": {
+    "job_min": 5,
+    "job_max": 10,
+    "paral_mas_num": [2, 2, 3, 2],
+    "num_stations": 4,
+    "routing": [1, 2, 3, 2, 4, 1],
+    "proc_time_min": 15,
+    "proc_time_max": 200,
+    "proc_time_dev_para": 20,
+    "trans_time_ave": 2,
+    "trans_time_dev": 0,
+    "trans_cap": 2,
+    "buffer_cap": 10,
+    "load_time": 1.0,
+    "unload_time": 1.0
+  },
+  "env_paras": {
+    "device": "cpu",
+    "batch_size": 1,
+    "valid_batch_size": 32
+  },
+  "model_paras": {
+    "device": "cuda",
+    "in_size_ma": 6,
+    "in_size_ope": 7,
+    "in_size_arc": 3,
+    "in_size_job": 3,
+    "out_size_ma": 8,
+    "out_size_ope": 8,
+    "hidden_size_ope": 64,
+    "n_hidden_actor": 64,
+    "n_hidden_critic": 64,
+    "n_layers_actor": 3,
+    "n_layers_critic": 3,
+    "n_layers_hgnn": 5,
+    "action_dim": 3,
+    "num_head": [1,1,1,1,1,1,1,1,1,1],
+    "dropout": 0.01
+  }
+}
+
