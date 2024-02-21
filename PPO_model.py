@@ -169,7 +169,7 @@ class HGNNScheduler(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def get_arc_prob(self, state, memories, flag_sample=False):
+    def get_arc_prob(self, state):
         """
         Get the probability of each arc in decision-making
         """
@@ -202,6 +202,61 @@ class HGNNScheduler(nn.Module):
             features = (h_opes, features[1], features[2], features[3], features[4], features[5], features[6])
 
         # Stacking and polling
+        # Average pooling of the machine embedding node with shape (batch_size, out_size_ma)
+        h_mas_pooled = torch.mean(h_mas, dim=-2)
+        # Average pooling of the buffer embedding node with shape (batch_size, out_size_ma)
+        h_buf_pooled = torch.mean(h_buf, dim=-2)
+        # Average pooling of the operation embedding node with shape (batch_size, out_size_ope)
+        h_opes_pooled = torch.mean(h_opes, dim=-2)
+
+        # Average polling of the job embedding node with shape (batch_size, in_size_job)
+        h_job_pooled = torch.zeros(size=(len(batch_idxes), self.in_size_job), dtype=torch.float, device=self.device)
+        for i_idxes in range(len(batch_idxes)):
+            h_job_pooled[i_idxes] = torch.mean(job_norm[i_idxes], dim=-2)
+
+        # arc_action: (len(batch idx), num_opes + 1, num_stations + 3, 2)
+
+        # Get the eligible mask of the arc selection with shape (len(batch idx), num_opes + 1, num_stations + 3, 2)
+        eligible = torch.cat((state.mask_mas_arc_batch[batch_idxes], state.mask_buf_arc_batch[batch_idxes]), dim=2)
+        eligible_wait = state.mask_wait_batch[batch_idxes].unsqueeze(-1)    # size: (len(batch idx), 1)
+
+        # Structure the tensor with the same dimension
+        h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2), -1)
+
+        # Input of the actor network
+        h_actions = torch.cat((h_opes, h_mas, h_buf, h_opes_pooled, h_mas_pooled, h_buf_pooled), dim=-1)
+        h_pooled = torch.cat((h_opes_pooled, h_mas_pooled, h_buf_pooled, h_job_pooled), dim=-1)
+
+        # Get probability of actions with masking the ineligible actions
+        scores = self.actor.forward(h_actions)
+        scores[:, :, :, :2] = scores[:, :, :, :2].masked_fill(eligible == False, float('-inf'))
+        no_wait_action_scores = torch.max(scores[:, :, :, 0], scores[:, :, :, 1])
+        no_wait_action_scores = no_wait_action_scores.view(len(batch_idxes), -1)
+        wait_action_scores = torch.mean(scores[:, :, :, 2], dim=(-1, -2)).unsqueeze(-1)
+        wait_action_scores = wait_action_scores.masked_fill(eligible_wait == False, float('-inf'))
+        action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
+        action_probs = F.softmax(action_scores, dim=-1)
+
+        return action_probs, h_pooled
+
+    def get_job_prob(self, state, arc_action, flag_sample=False):
+        """
+        Get the job idx corresponding to each arc selection in each batch
+        :param state: state of the environment
+        :param arc_action: size=(num_opes + 1, num_stations + 3, 2)
+        :param flag_sample: whether to sample or choose the job with max prob
+        :return: job idx of the arc
+        """
+
+
+
+
+
+
+
+
+
+
 
 
 

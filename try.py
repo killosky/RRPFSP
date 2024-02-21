@@ -26,11 +26,13 @@ if __name__ == '__main__':
     # print(a)
 
 
-    # 定义矩阵的大小
-    n = 5  # 例如，创建一个5x5的矩阵
-
-    # 使用torch.diag创建一个对角线上的元素为1的矩阵
-    # 第二个参数为1，意味着填充在主对角线之上的第一个对角线上
-    matrix = torch.diag(torch.ones(n - 1), 1).long()
-
-    print(matrix)
+    # # 定义矩阵的大小
+    # n = 5  # 例如，创建一个5x5的矩阵
+    #
+    # # 使用torch.diag创建一个对角线上的元素为1的矩阵
+    # # 第二个参数为1，意味着填充在主对角线之上的第一个对角线上
+    # matrix = torch.diag(torch.ones(n - 1), 1).long()
+    #
+    # print(matrix)
+    a = torch.ones(size=(3, 4, 5))
+    print(torch.mean(a, dim=(-1, -2)).size())
