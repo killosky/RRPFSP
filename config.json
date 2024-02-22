@@ -38,6 +38,23 @@
     "action_dim": 3,
     "num_head": [1,1,1,1,1,1,1,1,1,1],
     "dropout": 0.01
+  },
+  "train_paras": {
+    "lr": 0.0005,
+    "betas": [0.9, 0.999],
+    "gamma": 1,
+    "eps_clip": 0.2,
+    "K_epochs": 4,
+    "A_coeff": 1.0,
+    "V_coeff": 0.5,
+    "entropy_coeff": 0.01,
+    "minibatch_size": 512,
+    "update_timestep": 1,
+    "viz": true,
+    "viz_name": "Paper_1005",
+    "max_iteration": 1000,
+    "parallel_iter": 20,
+    "save_timestep": 10
   }
 }
 

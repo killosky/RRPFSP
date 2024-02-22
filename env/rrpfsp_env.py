@@ -363,7 +363,6 @@ class RRPFSPEnv(gym.Env):
         self.done_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.bool)
         self.done = self.done_batch.all()
         self.reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
-        self.cum_reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
 
         self.state = EnvState(proc_time_batch=self.proc_time_batch, job_num_batch=self.num_jobs_batch,
                               trans_time=self.trans_time, load_time=self.load_time, unload_time=self.unload_time,
@@ -736,7 +735,6 @@ class RRPFSPEnv(gym.Env):
                 self.robot_loc_batch[i_batch, :]).squeeze(-1), -3:].squeeze(0) + self.load_time
             self.feat_arc_buf_out_batch[i_batch, :, :, 2] = torch.sum(self.feat_ope_batch[i_batch, :, 1])
 
-
             self.mask_mas_arc_batch[i_batch] = False
             self.mask_buf_arc_batch[i_batch] = False
             self.mask_wait_batch[i_batch] = True
@@ -815,7 +813,6 @@ class RRPFSPEnv(gym.Env):
 
             self.time[i_batch] = next_time_batch[i_batch]
             self.reward_batch[i_batch] = self.reward_batch[i_batch] / torch.sum(self.proc_time_batch[i_batch])
-            self.cum_reward_batch[i_batch] += self.reward_batch[i_batch]
 
         batch_idxes_update = self.batch_idxes[~self.done_batch[self.batch_idxes]]
         self.batch_idxes = batch_idxes_update
@@ -835,7 +832,7 @@ class RRPFSPEnv(gym.Env):
                           mask_buf_arc_batch=self.mask_buf_arc_batch, job_state_batch=self.job_state_batch,
                           mask_job_batch=self.mask_job_batch, mask_wait_batch=self.mask_wait_batch)
 
-        return self.state, self.reward_batch, self.cum_reward_batch, self.done_batch
+        return self.state, self.reward_batch, self.done_batch
 
     def reset(self):
         """
@@ -890,7 +887,6 @@ class RRPFSPEnv(gym.Env):
         self.done_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.bool)
         self.done = self.done_batch.all()
         self.reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
-        self.cum_reward_batch = torch.zeros(size=(self.batch_size,), device=self.device, dtype=torch.float)
 
     def render(self, mode='human', job_flag=False):
         """
