@@ -34,6 +34,7 @@
     "n_layers_actor": 3,
     "n_layers_critic": 3,
     "n_layers_hgnn": 5,
+    "n_layers_job": 4,
     "action_dim": 3,
     "num_head": [1,1,1,1,1,1,1,1,1,1],
     "dropout": 0.01

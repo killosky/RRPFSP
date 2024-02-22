@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from torch.distributions import Categorical
 from graph.hgnn import GATedge, MLPsim
-from mlp import MLPActor, MLPCritic
+from mlp import MLPActor, MLPCritic, MLPJob
 
 
 class MLPs(nn.Module):
@@ -127,6 +127,7 @@ class HGNNScheduler(nn.Module):
 
         self.actor_dim = model_paras['actor_dim']    # Input dimension of the actor network (NOT DEFINED IN THE JSON FILE)
         self.critic_dim = model_paras['critic_dim']    # Input dimension of the critic network (NOT DEFINED IN THE JSON FILE)
+        self.job_section_dim = model_paras['job_section_dim']    # Input dimension of the job section network (NOT DEFINED IN THE JSON FILE)
 
         self.n_hidden_actor = model_paras['n_hidden_actor']  # Hidden dimension of the actor network
         self.n_hidden_critic = model_paras['n_hidden_critic']  # Hidden dimension of the critic network
@@ -134,6 +135,9 @@ class HGNNScheduler(nn.Module):
         self.n_layers_critic = model_paras['n_layers_critic']  # Number of layers of the critic network
 
         self.n_layers_hgnn = model_paras['n_layers_hgnn']  # Number of layers of the HGNN GATedge
+
+        self.n_layers_job = model_paras['n_layers_job']    # Number of layers of the job section network
+        self.n_hidden_job = model_paras['n_hidden_job']    # Hidden dimension of the job section network
 
         self.action_dim = model_paras['action_dim']  # Output dimension of the action space
         self.num_head = model_paras['num_head']  # Number of heads in GATedge
@@ -165,6 +169,9 @@ class HGNNScheduler(nn.Module):
         # Actor and critic networks
         self.actor = MLPActor(self.n_layers_actor, self.actor_dim, self.n_hidden_actor, self.action_dim).to(self.device)
         self.critic = MLPCritic(self.n_layers_critic, self.critic_dim, self.n_hidden_critic, 1).to(self.device)
+
+        # Job section network
+        self.get_jobs = MLPJob(self.n_layers_job, self.job_section_dim, self.n_hidden_job, 1).to(self.device)
 
     def forward(self):
         raise NotImplementedError
@@ -221,23 +228,67 @@ class HGNNScheduler(nn.Module):
         eligible_wait = state.mask_wait_batch[batch_idxes].unsqueeze(-1)    # size: (len(batch idx), 1)
 
         # Structure the tensor with the same dimension
-        h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2), -1)
+        h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2)+h_buf.size(-2), -1)
+        h_mas_buf_padding = torch.cat((h_mas, h_buf), dim=-2).unsqueeze(-3).expand(-1, h_opes.size(-2), -1, -1)
+        h_opes_pooled_padding = h_opes_pooled[:, None, None, :].expand_as(h_opes_padding)
+        h_mas_buf_pooled_padding = torch.cat(
+            (h_mas_pooled, h_buf_pooled), dim=-1)[:, None, None, :].expand_as(h_mas_buf_padding)
 
         # Input of the actor network
-        h_actions = torch.cat((h_opes, h_mas, h_buf, h_opes_pooled, h_mas_pooled, h_buf_pooled), dim=-1)
+        h_actions = torch.cat((
+            h_opes_padding, h_mas_buf_pooled_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
         h_pooled = torch.cat((h_opes_pooled, h_mas_pooled, h_buf_pooled, h_job_pooled), dim=-1)
 
         # Get probability of actions with masking the ineligible actions
         scores = self.actor.forward(h_actions)
         scores[:, :, :, :2] = scores[:, :, :, :2].masked_fill(eligible == False, float('-inf'))
-        no_wait_action_scores = torch.max(scores[:, :, :, 0], scores[:, :, :, 1])
-        no_wait_action_scores = no_wait_action_scores.view(len(batch_idxes), -1)
+        # no_wait_action_scores = torch.max(scores[:, :, :, 0], scores[:, :, :, 1])
+        # no_wait_action_scores = no_wait_action_scores.view(len(batch_idxes), -1)
         wait_action_scores = torch.mean(scores[:, :, :, 2], dim=(-1, -2)).unsqueeze(-1)
         wait_action_scores = wait_action_scores.masked_fill(eligible_wait == False, float('-inf'))
-        action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
+        # size: (len(batch_idxes), ope_num+1 * station_num+3 * 2 + 1)
+        action_scores = torch.cat((scores[:, :, :, 0], scores[:, :, :, 1], wait_action_scores), dim=-1)
+        # action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
         action_probs = F.softmax(action_scores, dim=-1)
 
         return action_probs, h_pooled
+
+    def act(self, state, memories, done, flag_sample=True, flag_train=True):
+        """
+        Get actions of the env
+        """
+        action_probs, _ = self.get_arc_prob(state)
+        dist = Categorical(action_probs)
+
+        if flag_sample:
+            action_index = dist.sample()
+        else:
+            action_index = torch.argmax(action_probs, dim=-1)
+
+        action = torch.zeros(size=(len(state.batch_idxes), state.ope_num+1, state.station_num+3, 2),
+                             dtype=torch.long, device=self.device)
+
+        for i_batch in range(len(state.batch_idxes)):
+            if action_index[i_batch] < (state.ope_num+1) * (state.station_num+3):
+                action[i_batch, torch.div(action_index[i_batch], state.station_num+3, rounding_mode='trunc'),
+                       action_index[i_batch] % (state.ope_num+1), 0] = 1
+            elif (state.ope_num+1) * (state.station_num+3) <= action_index[i_batch] < (
+                    state.ope_num+1) * (state.station_num+3) * 2:
+                action[i_batch, torch.div(action_index[i_batch] - (state.ope_num+1) * (state.station_num+3),
+                                          state.station_num+3, rounding_mode='trunc'),
+                       (action_index[i_batch] - (state.ope_num+1) * (state.station_num+3)) % (state.ope_num+1), 1] = 1
+            else:
+                pass
+
+        job_actions = self.get_job_prob(state, action, flag_sample)
+
+        if flag_train:
+            memories.states.append(copy.deepcopy(state))
+            memories.actions.append(action)
+            memories.job_actions.append(job_actions)
+            memories.dones.append(done)
+
+        return action, job_actions
 
     def get_job_prob(self, state, arc_action, flag_sample=False):
         """
@@ -247,6 +298,42 @@ class HGNNScheduler(nn.Module):
         :param flag_sample: whether to sample or choose the job with max prob
         :return: job idx of the arc
         """
+        job_action = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
+
+        action_idxes = torch.nonzero(arc_action)
+        for arc_idxes in action_idxes:
+            if arc_idxes[-1] == 0:
+                if arc_idxes[1] < state.station_num:
+                    selection_job_set = torch.nonzero(
+                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 0]).squeeze()
+                else:
+                    selection_job_set = torch.nonzero(
+                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 1]).squeeze()
+            else:
+                if arc_idxes[1] < state.station_num:
+                    selection_job_set = torch.nonzero(
+                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 2]).squeeze()
+                else:
+                    selection_job_set = torch.nonzero(
+                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 3]).squeeze()
+
+            score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[arc_idxes]][selection_job_set, :])
+            dist_job = Categorical(F.softmax(score_job, dim=-1))
+
+            if flag_sample:
+                action_job_index = dist_job.sample()
+            else:
+                action_job_index = torch.argmax(score_job, dim=-1)
+
+            job_action[state.batch_idxes[arc_idxes]] = selection_job_set[action_job_index]
+
+        return job_action
+
+    def evaluate(self, ope_ma_adj):
+        """
+        Generate evaluate function
+        """
+        batch_idxes = 1
 
 
 
