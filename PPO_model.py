@@ -253,6 +253,45 @@ class HGNNScheduler(nn.Module):
 
         return action_probs, h_pooled
 
+    def get_job_prob(self, state, arc_action):
+        """
+        Get the job idx corresponding to each arc selection in each batch
+        :param state: state of the environment
+        :param arc_action: size=(num_opes + 1, num_stations + 3, 2)
+        :return: job idx of the arc
+        """
+        # job_action = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
+        action_job_probs = []
+
+        for i_idxes in range(len(state.batch_idxes)):
+            arc_idx = torch.nonzero(arc_action[i_idxes]).squeeze()
+            if arc_idx.size(0) > 0:
+                if arc_idx[-1] == 0:
+                    if arc_idx[1] < state.station_num:
+                        selection_job_mask = state.ope_node_job_batch[
+                                                 state.batch_idxes[i_idxes]][arc_idx[0], :, 0].squeeze()
+                    else:
+                        selection_job_mask = state.ope_node_job_batch[
+                                                 state.batch_idxes[i_idxes]][arc_idx[0], :, 1].squeeze()
+                else:
+                    if arc_idx[1] < state.station_num:
+                        selection_job_mask = state.ope_node_job_batch[
+                                                 state.batch_idxes[i_idxes]][arc_idx[0], :, 2].squeeze()
+                    else:
+                        selection_job_mask = state.ope_node_job_batch[
+                                                 state.batch_idxes[i_idxes]][arc_idx[0], :, 3].squeeze()
+
+                score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[i_idxes]])
+                score_job = score_job.masked_fill(selection_job_mask == 0, float('-inf'))
+                action_job_prob = F.softmax(score_job, dim=-1)
+
+            else:
+                action_job_prob = torch.zeros(size=(state.job_num[i_idxes],), dtype=torch.float, device=self.device)
+
+            action_job_probs.append(action_job_prob)
+
+        return action_job_probs
+
     def act(self, state, memories, done, flag_sample=True, flag_train=True):
         """
         Get actions of the env
@@ -280,61 +319,106 @@ class HGNNScheduler(nn.Module):
             else:
                 pass
 
-        job_actions = self.get_job_prob(state, action, flag_sample)
+        job_action_probs = self.get_job_prob(state, action)
+        job_actions = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
+        for i_batch in range(len(state.batch_idxes)):
+            if torch.nonzero(job_action_probs[i_batch]).size(0) > 0:
+                dist_job = Categorical(job_action_probs[i_batch])
+                if flag_sample:
+                    job_actions[i_batch] = dist_job.sample()
+                else:
+                    job_actions[i_batch] = torch.argmax(job_action_probs[i_batch], dim=-1)
 
-        if flag_train:
-            memories.states.append(copy.deepcopy(state))
-            memories.actions.append(action)
-            memories.job_actions.append(job_actions)
-            memories.dones.append(done)
+        # if flag_train:
+        #     memories.states.append(copy.deepcopy(state))
+        #     memories.actions.append(action)
+        #     memories.job_actions.append(job_actions)
+        #     memories.dones.append(done)
 
         return action, job_actions
 
-    def get_job_prob(self, state, arc_action, flag_sample=False):
-        """
-        Get the job idx corresponding to each arc selection in each batch
-        :param state: state of the environment
-        :param arc_action: size=(num_opes + 1, num_stations + 3, 2)
-        :param flag_sample: whether to sample or choose the job with max prob
-        :return: job idx of the arc
-        """
-        job_action = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
-
-        action_idxes = torch.nonzero(arc_action)
-        for arc_idxes in action_idxes:
-            if arc_idxes[-1] == 0:
-                if arc_idxes[1] < state.station_num:
-                    selection_job_set = torch.nonzero(
-                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 0]).squeeze()
-                else:
-                    selection_job_set = torch.nonzero(
-                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 1]).squeeze()
-            else:
-                if arc_idxes[1] < state.station_num:
-                    selection_job_set = torch.nonzero(
-                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 2]).squeeze()
-                else:
-                    selection_job_set = torch.nonzero(
-                        state.ope_node_job_batch[state.batch_idxes[arc_idxes]][arc_idxes[0], :, 3]).squeeze()
-
-            score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[arc_idxes]][selection_job_set, :])
-            dist_job = Categorical(F.softmax(score_job, dim=-1))
-
-            if flag_sample:
-                action_job_index = dist_job.sample()
-            else:
-                action_job_index = torch.argmax(score_job, dim=-1)
-
-            job_action[state.batch_idxes[arc_idxes]] = selection_job_set[action_job_index]
-
-        return job_action
-
-    def evaluate(self, ope_ma_adj):
+    def evaluate(self, ope_ma_adj, ope_ma_adj_out, ope_buf_adj, ope_buf_adj_out, raw_opes, raw_mas, raw_buf,
+                 raw_arc_ma_in, raw_arc_ma_out, raw_arc_buf_in, raw_arc_buf_out, raw_job, eligible, eligible_wait,
+                 action_envs, action_job_envs):
         """
         Generate evaluate function
         """
-        batch_idxes = 1
+        batch_idxes = torch.arange(0, raw_opes.size(0), dtype=torch.long, device=self.device)
 
+        # Normalized input features
+        opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_ma_out_norm, arc_buf_in_norm, arc_buf_out_norm, job_norm = \
+            get_normalized(raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_ma_out, raw_arc_buf_in, raw_arc_buf_out,
+                           raw_job, batch_idxes)
+
+        # L iterations of HGNN
+        features = (opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_buf_in_norm, arc_ma_out_norm, arc_buf_out_norm)
+        adj = (ope_ma_adj, ope_ma_adj_out, ope_buf_adj, ope_buf_adj_out)
+
+        for i_layer_hgnn in range(self.n_layers_hgnn):
+            # Machine node embedding
+            h_mas, h_buf = self.get_machines[i_layer_hgnn](adj, batch_idxes, features)
+            features = (features[0], h_mas, h_buf, features[3], features[4], features[5], features[6])
+            # Operation node embedding
+            h_opes = self.get_operations[i_layer_hgnn](adj, batch_idxes, features)
+            features = (h_opes, features[1], features[2], features[3], features[4], features[5], features[6])
+
+        # Stacking and polling
+        # Average pooling of the machine embedding node with shape (batch_size, out_size_ma)
+        h_mas_pooled = torch.mean(h_mas, dim=-2)
+        # Average pooling of the buffer embedding node with shape (batch_size, out_size_ma)
+        h_buf_pooled = torch.mean(h_buf, dim=-2)
+        # Average pooling of the operation embedding node with shape (batch_size, out_size_ope)
+        h_opes_pooled = torch.mean(h_opes, dim=-2)
+
+        # Average polling of the job embedding node with shape (batch_size, in_size_job)
+        h_job_pooled = torch.zeros(size=(len(batch_idxes), self.in_size_job), dtype=torch.float, device=self.device)
+        for i_idxes in range(len(batch_idxes)):
+            h_job_pooled[i_idxes] = torch.mean(job_norm[i_idxes], dim=-2)
+
+        # Structure the tensor with the same dimension
+        h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2) + h_buf.size(-2), -1)
+        h_mas_buf_padding = torch.cat((h_mas, h_buf), dim=-2).unsqueeze(-3).expand(-1, h_opes.size(-2), -1, -1)
+        h_opes_pooled_padding = h_opes_pooled[:, None, None, :].expand_as(h_opes_padding)
+        h_mas_buf_pooled_padding = torch.cat(
+            (h_mas_pooled, h_buf_pooled), dim=-1)[:, None, None, :].expand_as(h_mas_buf_padding)
+
+        # Input of the actor network
+        h_actions = torch.cat((
+            h_opes_padding, h_mas_buf_pooled_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
+        h_pooled = torch.cat((h_opes_pooled, h_mas_pooled, h_buf_pooled, h_job_pooled), dim=-1)
+
+        # Get probability of actions with masking the ineligible actions
+        scores = self.actor.forward(h_actions)
+        scores[:, :, :, :2] = scores[:, :, :, :2].masked_fill(eligible == False, float('-inf'))
+        # no_wait_action_scores = torch.max(scores[:, :, :, 0], scores[:, :, :, 1])
+        # no_wait_action_scores = no_wait_action_scores.view(len(batch_idxes), -1)
+        wait_action_scores = torch.mean(scores[:, :, :, 2], dim=(-1, -2)).unsqueeze(-1)
+        wait_action_scores = wait_action_scores.masked_fill(eligible_wait == False, float('-inf'))
+        # size: (len(batch_idxes), ope_num+1 * station_num+3 * 2 + 1)
+        action_scores = torch.cat((scores[:, :, :, 0], scores[:, :, :, 1], wait_action_scores), dim=-1)
+        # action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
+        action_probs = F.softmax(action_scores, dim=-1)
+        dist = Categorical(action_probs)
+        actions_logprobs = dist.log_prob(action_envs)
+        dist_entropy = dist.entropy()
+
+        action_job_probs_no_mask = []
+        dist_job = []
+        actions_job_logprobs = []
+        dist_job_entropy = []
+
+        for i_idxes in range(len(batch_idxes)):
+            score_job = self.get_jobs.forward(raw_job[batch_idxes[i_idxes]])
+            action_job_prob = F.softmax(score_job, dim=-1)
+            action_job_probs_no_mask.append(action_job_prob)
+            dist_job.append(Categorical(action_job_prob))
+            actions_job_logprobs.append(dist_job[i_idxes].log_prob(action_job_envs[i_idxes]))
+            dist_job_entropy.append(dist_job[i_idxes].entropy())
+
+        # Calculate the value of the state
+        state_value = self.critic.forward(h_pooled)    # size: (len(batch_idxes), 1)
+
+        return actions_logprobs, actions_job_logprobs, state_value, dist_entropy, dist_job_entropy
 
 
 
