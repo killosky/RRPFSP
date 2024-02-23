@@ -76,7 +76,7 @@ def main():
     # Start training iteration
     start_time = time.time()
     env = None
-    for i_iter in range(1, train_paras["max_iter"] + 1):
+    for i_iter in range(1, train_paras["max_iteration"] + 1):
         print("Iteration: ", i_iter)
 
         # Replace training instances every x iteration (x = 20 in paper)

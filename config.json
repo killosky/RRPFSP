@@ -31,6 +31,7 @@
     "hidden_size_ope": 64,
     "n_hidden_actor": 64,
     "n_hidden_critic": 64,
+    "n_hidden_job": 64,
     "n_layers_actor": 3,
     "n_layers_critic": 3,
     "n_layers_hgnn": 5,

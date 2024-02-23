@@ -105,7 +105,7 @@ class MLPCritic(nn.Module):
         else:
             self.linear_or_not = False
             self.linears = torch.nn.ModuleList()
-            # self.batch_norms = torch.nn.ModuleList()
+            self.batch_norms = torch.nn.ModuleList()
 
             self.linears.append(nn.Linear(input_dim, hidden_dim))
             for layer in range(num_layers - 2):
@@ -145,6 +145,7 @@ class MLPJob(nn.Module):
         else:
             self.linear_or_not = False
             self.linears = torch.nn.ModuleList()
+            self.batch_norms = torch.nn.ModuleList()
 
             self.linears.append(nn.Linear(input_dim, hidden_dim))
             for layer in range(num_layers - 2):

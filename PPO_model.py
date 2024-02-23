@@ -89,11 +89,11 @@ class MLPs(nn.Module):
 
         self.gnn_layers = nn.ModuleList()
 
-        for i_feat in range(len(self.in_sizes_ope)):
-            self.gnn_layers.append(MLPsim(
-                self.in_sizes_ope[i_feat], self.out_size_ope, self.hidden_size_ope, self.num_head).to(self.device))
+        for i_feat in range(len(self.in_sizes_ope_embed)):
+            self.gnn_layers.append(MLPsim(self.in_sizes_ope_embed[i_feat],
+                                          self.out_size_ope, self.hidden_size_ope, self.num_head).to(self.device))
         self.project = nn.Sequential(
-            nn.Linear(self.out_size_ope * len(self.in_sizes_ope), self.hidden_size_ope),
+            nn.Linear(self.out_size_ope * len(self.in_sizes_ope_embed), self.hidden_size_ope),
             nn.ELU(),
             nn.Linear(self.hidden_size_ope, self.hidden_size_ope),
             nn.ELU(),
@@ -122,7 +122,7 @@ class MLPs(nn.Module):
                       adj[1].unsqueeze(0).expand(batch_idxes.size(0), -1, -1), ope_buf_adj_or, ope_self_adj)
 
         MLP_embeddings = []
-        for i_feat in range(len(self.in_sizes_ope)):
+        for i_feat in range(len(self.in_sizes_ope_embed)):
             MLP_embeddings.append(self.gnn_layers[i_feat](h[i_feat], adj_matrix[i_feat]))
 
         MLP_embedding_in = torch.cat(MLP_embeddings, dim=-1)
@@ -182,9 +182,9 @@ class HGNNScheduler(nn.Module):
         self.out_size_ope = model_paras['out_size_ope']    # Dimension of operation embedding in MLPs
         self.hidden_size_ope = model_paras['hidden_size_ope']    # Hidden dimensions of the MLPs
 
-        self.actor_dim = model_paras['actor_dim']    # Input dimension of the actor network (NOT DEFINED IN THE JSON FILE)
-        self.critic_dim = model_paras['critic_dim']    # Input dimension of the critic network (NOT DEFINED IN THE JSON FILE)
-        self.job_section_dim = model_paras['job_section_dim']    # Input dimension of the job section network (NOT DEFINED IN THE JSON FILE)
+        self.actor_dim = model_paras['actor_in_dim']    # Input dimension of the actor network
+        self.critic_dim = model_paras['critic_in_dim']    # Input dimension of the critic network
+        self.job_section_dim = model_paras['job_selection_dim']    # Input dimension of the job section network
 
         self.n_hidden_actor = model_paras['n_hidden_actor']  # Hidden dimension of the actor network
         self.n_hidden_critic = model_paras['n_hidden_critic']  # Hidden dimension of the critic network
@@ -241,7 +241,7 @@ class HGNNScheduler(nn.Module):
         batch_idxes = state.batch_idxes
 
         # Raw features
-        raw_opes = state.feat_opes_batch[batch_idxes]
+        raw_opes = state.feat_ope_batch[batch_idxes]
         raw_mas = state.feat_mas_batch[batch_idxes]
         raw_buf = state.feat_buf_batch[batch_idxes]
         raw_arc_ma_in = state.feat_arc_ma_in_batch[batch_idxes]
@@ -261,6 +261,7 @@ class HGNNScheduler(nn.Module):
             # Machine node embedding
             h_mas, h_buf = self.get_machines[i_layer_hgnn](adj, batch_idxes, features)
             features = (features[0], h_mas, h_buf, features[3], features[4], features[5], features[6])
+            # feat_opes_batch, feat_mas_batch, feat_buf_batch
             # Operation node embedding
             h_opes = self.get_operations[i_layer_hgnn](adj, batch_idxes, features)
             features = (h_opes, features[1], features[2], features[3], features[4], features[5], features[6])
