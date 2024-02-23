@@ -116,7 +116,6 @@ class CaseGenerator:
 
             str_line = " ".join([str(val) for val in line])
             lines.append(str_line)
-        print(lines)
 
         # Save the instance to a file
         if self.flag_doc:

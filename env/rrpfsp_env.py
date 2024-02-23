@@ -97,18 +97,67 @@ class EnvState:
         self.mask_job_batch = mask_job_batch
         self.mask_wait_batch = mask_wait_batch
 
+    # def change_device(self, device):
+
+        # # static
+        # proc_time_batch: list[torch.Tensor] = None
+        # job_num_batch: torch.Tensor = None
+        # trans_time: torch.Tensor = None
+        # load_time: torch.Tensor = None
+        # unload_time: torch.Tensor = None
+        # paral_mas_num: torch.Tensor = None
+        # station_num: torch.Tensor = None
+        # ope_num: torch.Tensor = None
+        # routing: torch.Tensor = None
+        # ope_ma_adj: torch.Tensor = None
+        # ope_ma_adj_out: torch.Tensor = None
+        # ope_buf_adj: torch.Tensor = None
+        # ope_buf_adj_out: torch.Tensor = None
+        #
+        # # dynamic
+        # batch_idxes: torch.Tensor = None
+        # mas_state_batch: torch.Tensor = None
+        # mas_left_proctime_batch: torch.Tensor = None
+        #
+        # feat_ope_batch: torch.Tensor = None
+        # feat_mas_batch: torch.Tensor = None
+        # feat_buf_batch: torch.Tensor = None
+        #
+        # feat_arc_ma_in_batch: torch.Tensor = None
+        # feat_arc_ma_out_batch: torch.Tensor = None
+        # feat_arc_buf_in_batch: torch.Tensor = None
+        # feat_arc_buf_out_batch: torch.Tensor = None
+        #
+        # feat_job_batch: list[torch.Tensor] = None
+        # job_next_ope: list[torch.Tensor] = None
+        # ope_job_batch: list[torch.Tensor] = None
+        #
+        # job_loc_batch: list[torch.Tensor] = None
+        # job_loc_ma_batch: list[torch.Tensor] = None
+        # job_state_batch: list[torch.Tensor] = None
+        # done_job_batch: list[torch.Tensor] = None
+        # ope_node_job_batch: list[torch.Tensor] = None
+        # num_jobs_batch: torch.Tensor = None
+        # robot_loc_batch: torch.Tensor = None
+        #
+        # mask_mas_arc_batch: torch.Tensor = None
+        # mask_buf_arc_batch: torch.Tensor = None
+        # mask_job_batch: list[torch.Tensor] = None
+        # mask_wait_batch: torch.Tensor = None
+
 
 def shop_info_initial(shop_paras, trans_time_matrix=None):
     if trans_time_matrix is None:
         trans_time_matrix = trans_time_generate(shop_paras["num_stations"], shop_paras["trans_time_ave"],
                                                 shop_paras["trans_time_dev"])
-    shop_info = ShopInfo(job_min=shop_paras["job_min"], job_max=shop_paras["job_max"],
-                         paral_mas_num=shop_paras["paral_mas_num"], routing=shop_paras["routing"],
-                         proc_time_min=shop_paras["proc_time_min"], proc_time_max=shop_paras["proc_time_max"],
-                         trans_time=trans_time_matrix, trans_cap=shop_paras["trans_cap"],
-                         buffer_cap=shop_paras["buffer_cap"], load_time=shop_paras["load_time"],
-                         unload_time=shop_paras["unload_time"], proc_time_dev_para=shop_paras["proc_time_dev_para"])
-    return shop_info
+    shop_info_init = ShopInfo(job_min=shop_paras["job_min"], job_max=shop_paras["job_max"],
+                              paral_mas_num=shop_paras["paral_mas_num"], routing=shop_paras["routing"],
+                              proc_time_min=shop_paras["proc_time_min"], proc_time_max=shop_paras["proc_time_max"],
+                              trans_time=trans_time_matrix, trans_cap=shop_paras["trans_cap"],
+                              buffer_cap=shop_paras["buffer_cap"], load_time=shop_paras["load_time"],
+                              unload_time=shop_paras["unload_time"],
+                              proc_time_dev_para=shop_paras["proc_time_dev_para"])
+    return shop_info_init
 
 
 class RRPFSPEnv(gym.Env):
