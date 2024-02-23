@@ -97,53 +97,51 @@ class EnvState:
         self.mask_job_batch = mask_job_batch
         self.mask_wait_batch = mask_wait_batch
 
-    # def change_device(self, device):
+    def change_device(self, device):
 
-        # # static
-        # proc_time_batch: list[torch.Tensor] = None
-        # job_num_batch: torch.Tensor = None
-        # trans_time: torch.Tensor = None
-        # load_time: torch.Tensor = None
-        # unload_time: torch.Tensor = None
-        # paral_mas_num: torch.Tensor = None
-        # station_num: torch.Tensor = None
-        # ope_num: torch.Tensor = None
-        # routing: torch.Tensor = None
-        # ope_ma_adj: torch.Tensor = None
-        # ope_ma_adj_out: torch.Tensor = None
-        # ope_buf_adj: torch.Tensor = None
-        # ope_buf_adj_out: torch.Tensor = None
-        #
-        # # dynamic
-        # batch_idxes: torch.Tensor = None
-        # mas_state_batch: torch.Tensor = None
-        # mas_left_proctime_batch: torch.Tensor = None
-        #
-        # feat_ope_batch: torch.Tensor = None
-        # feat_mas_batch: torch.Tensor = None
-        # feat_buf_batch: torch.Tensor = None
-        #
-        # feat_arc_ma_in_batch: torch.Tensor = None
-        # feat_arc_ma_out_batch: torch.Tensor = None
-        # feat_arc_buf_in_batch: torch.Tensor = None
-        # feat_arc_buf_out_batch: torch.Tensor = None
-        #
-        # feat_job_batch: list[torch.Tensor] = None
-        # job_next_ope: list[torch.Tensor] = None
-        # ope_job_batch: list[torch.Tensor] = None
-        #
-        # job_loc_batch: list[torch.Tensor] = None
-        # job_loc_ma_batch: list[torch.Tensor] = None
-        # job_state_batch: list[torch.Tensor] = None
-        # done_job_batch: list[torch.Tensor] = None
-        # ope_node_job_batch: list[torch.Tensor] = None
-        # num_jobs_batch: torch.Tensor = None
-        # robot_loc_batch: torch.Tensor = None
-        #
-        # mask_mas_arc_batch: torch.Tensor = None
-        # mask_buf_arc_batch: torch.Tensor = None
-        # mask_job_batch: list[torch.Tensor] = None
-        # mask_wait_batch: torch.Tensor = None
+        self.proc_time_batch = [i_tensor.to(device) for i_tensor in self.proc_time_batch]
+        self.job_num_batch = self.job_num_batch.to(device)
+        self.trans_time = self.trans_time.to(device)
+        self.load_time = self.load_time.to(device)
+        self.unload_time = self.unload_time.to(device)
+        self.paral_mas_num = self.paral_mas_num.to(device)
+        self.station_num = self.station_num.to(device)
+        self.ope_num = self.ope_num.to(device)
+        self.routing = self.routing.to(device)
+        self.ope_ma_adj = self.ope_ma_adj.to(device)
+        self.ope_ma_adj_out = self.ope_ma_adj_out.to(device)
+        self.ope_buf_adj = self.ope_buf_adj.to(device)
+        self.ope_buf_adj_out = self.ope_buf_adj_out.to(device)
+
+        self.batch_idxes = self.batch_idxes.to(device)
+        self.mas_state_batch = self.mas_state_batch.to(device)
+        self.mas_left_proctime_batch = self.mas_left_proctime_batch.to(device)
+
+        self.feat_ope_batch = self.feat_ope_batch.to(device)
+        self.feat_mas_batch = self.feat_mas_batch.to(device)
+        self.feat_buf_batch = self.feat_buf_batch.to(device)
+
+        self.feat_arc_ma_in_batch = self.feat_arc_ma_in_batch.to(device)
+        self.feat_arc_ma_out_batch = self.feat_arc_ma_out_batch.to(device)
+        self.feat_arc_buf_in_batch = self.feat_arc_buf_in_batch.to(device)
+        self.feat_arc_buf_out_batch = self.feat_arc_buf_out_batch.to(device)
+
+        self.feat_job_batch = [i_tensor.to(device) for i_tensor in self.feat_job_batch]
+        self.job_next_ope = [i_tensor.to(device) for i_tensor in self.job_next_ope]
+        self.ope_job_batch = [i_tensor.to(device) for i_tensor in self.ope_job_batch]
+
+        self.job_loc_batch = [i_tensor.to(device) for i_tensor in self.job_loc_batch]
+        self.job_loc_ma_batch = [i_tensor.to(device) for i_tensor in self.job_loc_ma_batch]
+        self.job_state_batch = [i_tensor.to(device) for i_tensor in self.job_state_batch]
+        self.done_job_batch = [i_tensor.to(device) for i_tensor in self.done_job_batch]
+        self.ope_node_job_batch = [i_tensor.to(device) for i_tensor in self.ope_node_job_batch]
+        self.num_jobs_batch = self.num_jobs_batch.to(device)
+        self.robot_loc_batch = self.robot_loc_batch.to(device)
+
+        self.mask_mas_arc_batch = self.mask_mas_arc_batch.to(device)
+        self.mask_buf_arc_batch = self.mask_buf_arc_batch.to(device)
+        self.mask_wait_batch = self.mask_wait_batch.to(device)
+        self.mask_wait_batch = self.mask_wait_batch.to(device)
 
 
 def shop_info_initial(shop_paras, trans_time_matrix=None):

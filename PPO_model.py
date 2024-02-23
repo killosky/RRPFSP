@@ -520,10 +520,10 @@ class PPO:
         minibatch_size = train_paras['minibatch_size']
 
         # Flatten the data in memory (in the dimension of parallel instances and decision points)
-        old_ope_ma_adj = torch.stack(memory.ope_ma_adj)
-        old_ope_ma_adj_out = torch.stack(memory.ope_ma_adj_out)
-        old_ope_buf_adj = torch.stack(memory.ope_buf_adj)
-        old_ope_buf_adj_out = torch.stack(memory.ope_buf_adj_out)
+        old_ope_ma_adj = torch.stack(memory.ope_ma_adj).to(device)
+        old_ope_ma_adj_out = torch.stack(memory.ope_ma_adj_out).to(device)
+        old_ope_buf_adj = torch.stack(memory.ope_buf_adj).to(device)
+        old_ope_buf_adj_out = torch.stack(memory.ope_buf_adj_out).to(device)
 
         old_raw_opes = torch.stack(memory.raw_opes, dim=0).transpose(0, 1).flatten(0, 1).to(device)
         old_raw_mas = torch.stack(memory.raw_mas, dim=0).transpose(0, 1).flatten(0, 1).to(device)
@@ -606,8 +606,8 @@ class PPO:
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
-        return loss_epochs.item() / self.K_epochs, \
-               discounted_rewards.item() / (self.num_envs * train_paras["update_timestep"])
+        return loss_epochs.item() / self.K_epochs, discounted_rewards.item() / (
+                self.num_envs * train_paras["update_timestep"])
 
 
 
