@@ -49,7 +49,6 @@ def main():
     env_valid_paras["batch_size"] = env_paras["valid_batch_size"]
 
     model_paras["actor_in_dim"] = model_paras["out_size_ma"] * 2 + model_paras["out_size_ope"] * 2
-    print("actor_in_dim: ", model_paras["actor_in_dim"])
     model_paras["critic_in_dim"] = model_paras["out_size_ma"] + model_paras["out_size_ope"]
     # model_paras["job_selection_dim"] = \
     #     model_paras["out_size_ope"] + model_paras["out_size_ma"] * 2 + model_paras["in_size_job"]
@@ -97,7 +96,9 @@ def main():
             with torch.no_grad():
                 state.change_device(device_model)
                 actions = model.policy_old.act(state, memories, dones, flag_sample=True, flag_train=True)
-            actions = actions.to(device)
+            actions = (actions[0].to(device), actions[1].to(device))
+            # print(torch.nonzero(actions[0]))
+            # actions = actions.to(device)
             state, rewards, dones = env.step(actions)
             done = dones.all()
             memories.rewards.append(copy.deepcopy(rewards).to(device_model))

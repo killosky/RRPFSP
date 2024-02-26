@@ -342,13 +342,15 @@ class HGNNScheduler(nn.Module):
                         selection_job_mask = state.ope_node_job_batch[
                                                  state.batch_idxes[i_idxes]][arc_idx[0], :, 3].squeeze()
 
-                print(state.feat_job_batch[state.batch_idxes[i_idxes]].size())
                 score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[i_idxes]])
+                score_job = score_job.squeeze(-1)
                 score_job = score_job.masked_fill(selection_job_mask == 0, float('-inf'))
                 action_job_prob = F.softmax(score_job, dim=-1)
 
             else:
-                action_job_prob = torch.zeros(size=(state.job_num[i_idxes],), dtype=torch.float, device=self.device)
+                action_job_prob = torch.ones(size=(
+                    state.num_jobs_batch[state.batch_idxes[i_idxes]],), dtype=torch.float, device=self.device)
+                action_job_prob = F.softmax(action_job_prob, dim=-1)
 
             action_job_probs.append(action_job_prob)
 
@@ -382,11 +384,12 @@ class HGNNScheduler(nn.Module):
                 pass
 
         job_action_probs = self.get_job_prob(state, action)
-        dist_job = Categorical(job_action_probs)
+        dists_job = []
         job_actions = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
         for i_batch in range(len(state.batch_idxes)):
             if torch.nonzero(job_action_probs[i_batch]).size(0) > 0:
                 dist_job = Categorical(job_action_probs[i_batch])
+                dists_job.append(dist_job)
                 if flag_sample:
                     job_actions[i_batch] = dist_job.sample()
                 else:
@@ -394,16 +397,16 @@ class HGNNScheduler(nn.Module):
 
         if flag_train:
             memories.logprobs.append(dist.log_prob(action_index))
-            memories.logprobs_job.append(torch.stack([dist_job.log_prob(job_actions[i_batch])
+            memories.logprobs_job.append(torch.stack([dists_job[i_batch].log_prob(job_actions[i_batch])
                                                       for i_batch in range(len(state.batch_idxes))]))
             memories.action_envs.append(action_index)
             memories.action_job_envs.append(job_actions)
 
-            memories.opes_ma_adj.append(copy.deepcopy(state.ope_ma_adj))
-            memories.opes_ma_adj_out.append(copy.deepcopy(state.ope_ma_adj_out))
-            memories.opes_buf_adj.append(copy.deepcopy(state.ope_buf_adj))
-            memories.opes_buf_adj_out.append(copy.deepcopy(state.ope_buf_adj_out))
-            memories.raw_opes.append(copy.deepcopy(state.feat_opes_batch))
+            memories.ope_ma_adj.append(copy.deepcopy(state.ope_ma_adj))
+            memories.ope_ma_adj_out.append(copy.deepcopy(state.ope_ma_adj_out))
+            memories.ope_buf_adj.append(copy.deepcopy(state.ope_buf_adj))
+            memories.ope_buf_adj_out.append(copy.deepcopy(state.ope_buf_adj_out))
+            memories.raw_opes.append(copy.deepcopy(state.feat_ope_batch))
             memories.raw_mas.append(copy.deepcopy(state.feat_mas_batch))
             memories.raw_buf.append(copy.deepcopy(state.feat_buf_batch))
             memories.raw_arc_ma_in.append(copy.deepcopy(state.feat_arc_ma_in_batch))
@@ -598,10 +601,9 @@ class PPO:
                 advantages = rewards_envs[start_idx:end_idx].unsqueeze(-1) - state_values.detach()
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-                loss = - self.A_coeff * torch.min(surr1, surr2) \
-                       + self.vf_coeff * self.MseLoss(state_values,
-                                                      rewards_envs[i * minibatch_size:(i + 1) * minibatch_size]) \
-                       - self.entropy_coeff * dist_entropy
+                loss = - self.A_coeff * torch.min(surr1, surr2) + self.V_coeff * self.MSELoss(
+                    state_values, rewards_envs[i_minibatch * minibatch_size:(i_minibatch + 1) * minibatch_size]) \
+                    - self.entropy_coeff * dist_entropy
                 loss_epochs += loss.mean().detach()
 
                 self.optimizer.zero_grad()

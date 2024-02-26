@@ -241,9 +241,9 @@ class RRPFSPEnv(gym.Env):
 
         for i_batch_case in range(self.batch_size):
             proc_time_matrix = load_rrpfsp(lines[i_batch_case], shop_info, device=self.device)
-            self.proc_time_batch.append(proc_time_matrix)
+            self.proc_time_batch.append(copy.deepcopy(proc_time_matrix))
 
-            self.left_proc_time_batch.append(proc_time_matrix)
+            self.left_proc_time_batch.append(copy.deepcopy(proc_time_matrix))
 
             job_loc_matrix = torch.zeros(
                 size=(self.num_jobs_batch[i_batch_case], self.station_num+3), device=self.device)
@@ -518,18 +518,25 @@ class RRPFSPEnv(gym.Env):
                                 self.makespan_batch[i_batch] = self.time[i_batch] + self.feat_arc_buf_in_batch[
                                     i_batch, action_ope, action_station - self.station_num - 3, 1]
                             elif action_station == self.station_num + 1:
-                                self.feat_ope_batch[i_batch, action_ope, 2] -= 1
+                                self.feat_ope_batch[i_batch, action_ope, 2] += 1
                                 self.job_to_buf_flag_batch[i_batch][action_job, action_ope] = False
                             else:
                                 pass
-                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 0] -= 1
+                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 0] += 1
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 2] += self.proc_time_batch[
                                 i_batch][action_job][self.job_next_ope[i_batch][action_job]]
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 3] += torch.sum(
                                 self.proc_time_batch[i_batch][action_job, self.job_next_ope[i_batch][action_job]:])
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 4] = self.feat_buf_batch[
-                                i_batch, action_station-self.station_num-3, 3] / torch.sum(torch.sum(
-                                    self.proc_time_batch[i_batch][action_job, :]))
+                                i_batch, action_station-self.station_num-3, 3] / torch.sum(
+                                    self.proc_time_batch[i_batch][torch.nonzero(
+                                        self.job_loc_batch[i_batch][:, action_station]).squeeze(), :])
+
+                            # print("31: ", torch.sum(self.proc_time_batch[i_batch][action_job, :]))
+                            # print("32: ", torch.sum(torch.sum(self.proc_time_batch[i_batch][action_job, :])))
+                            # print("33: ", torch.sum(self.proc_time_batch[i_batch][torch.nonzero(
+                            #     self.job_loc_batch[i_batch][:, action_station]).squeeze(), :]))
+                            # print("_______")
 
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 5] = 1
                             start_proc_time = self.time[i_batch] + self.feat_arc_buf_in_batch[
@@ -585,9 +592,13 @@ class RRPFSPEnv(gym.Env):
                                 i_batch][action_job][self.job_next_ope[i_batch][action_job]]
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 3] -= torch.sum(
                                 self.proc_time_batch[i_batch][action_job, self.job_next_ope[i_batch][action_job]:])
-                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 4] = self.feat_buf_batch[
-                                i_batch, action_station-self.station_num-3, 3] / torch.sum(torch.sum(
-                                    self.proc_time_batch[i_batch][action_job, :]))
+                            if self.feat_buf_batch[i_batch, action_station-self.station_num-3, 3] < 1e-4:
+                                self.feat_buf_batch[i_batch, action_station - self.station_num - 3, 3] = 0
+                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 4] = \
+                                self.feat_buf_batch[i_batch, action_station-self.station_num-3, 3] / (
+                                    torch.sum(self.proc_time_batch[i_batch][torch.nonzero(self.job_loc_batch[i_batch][
+                                        :, action_station]).squeeze(), :]) - torch.sum(self.proc_time_batch[
+                                            i_batch][action_job, :]) + 1e-6)
                             self.feat_buf_batch[i_batch, action_station-self.station_num-3, 5] = 0
 
                             if action_station == self.station_num + 1:
@@ -732,9 +743,8 @@ class RRPFSPEnv(gym.Env):
             for ope_idx in ope_change_idx:
                 self.feat_ope_batch[i_batch, ope_idx, 0] += 1
 
-            self.feat_ope_batch[i_batch, :, 3] = 1 - torch.sum(self.left_proc_time_batch[i_batch], dim=0) / torch.sum(
-                self.proc_time_batch[i_batch], dim=0) \
-                if torch.sum(self.proc_time_batch[i_batch], dim=0).nelement() > 0 else 0
+            self.feat_ope_batch[i_batch, :, 3] = (1 - torch.sum(self.left_proc_time_batch[i_batch], dim=0) / (torch.sum(
+                self.proc_time_batch[i_batch], dim=0) + 1e-5)) * (torch.sum(self.proc_time_batch[i_batch], dim=0) > 0)
             self.feat_ope_batch[i_batch, :, 4] = torch.sum(self.left_proc_time_batch[i_batch], dim=0)
             self.feat_ope_batch[i_batch, :, 5] = torch.sum(self.left_proc_time_batch[i_batch] * (
                     self.job_state_batch[i_batch] == 0).float().unsqueeze(-1) * self.ope_job_batch[i_batch].T, dim=0)

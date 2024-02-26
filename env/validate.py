@@ -86,6 +86,7 @@ if __name__ == "__main__":
         # if torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]).size(0) > 0:
         # print("action: ", torch.nonzero(a), b)
         env_valid.step(action)
+        # print(env_valid.feat_buf_batch)
 
         # print(env_valid.schedule_batch[0])
         # print(env_valid.mas_left_proctime_batch)
