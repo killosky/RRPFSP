@@ -17,7 +17,7 @@
   },
   "env_paras": {
     "device": "cpu",
-    "batch_size": 1,
+    "batch_size": 2,
     "valid_batch_size": 32
   },
   "model_paras": {
@@ -28,6 +28,7 @@
     "in_size_job": 3,
     "out_size_ma": 8,
     "out_size_ope": 8,
+    "job_selection_dim": 3,
     "hidden_size_ope": 64,
     "n_hidden_actor": 64,
     "n_hidden_critic": 64,

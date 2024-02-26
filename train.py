@@ -49,9 +49,10 @@ def main():
     env_valid_paras["batch_size"] = env_paras["valid_batch_size"]
 
     model_paras["actor_in_dim"] = model_paras["out_size_ma"] * 2 + model_paras["out_size_ope"] * 2
+    print("actor_in_dim: ", model_paras["actor_in_dim"])
     model_paras["critic_in_dim"] = model_paras["out_size_ma"] + model_paras["out_size_ope"]
-    model_paras["job_selection_dim"] = \
-        model_paras["out_size_ope"] + model_paras["out_size_ma"] * 2 + model_paras["in_size_job"]
+    # model_paras["job_selection_dim"] = \
+    #     model_paras["out_size_ope"] + model_paras["out_size_ma"] * 2 + model_paras["in_size_job"]
 
     memories = PPO_model.Memory()
     model = PPO_model.PPO(model_paras, train_paras, num_envs=env_paras["batch_size"])

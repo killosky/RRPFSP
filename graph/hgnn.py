@@ -201,11 +201,8 @@ class MLPsim(nn.Module):
         """
         forward propagation
         """
-        print("fdsa")
         a = adj.unsqueeze(-1) * feat.unsqueeze(-3)
         b = torch.sum(a, dim=-2)
-        print("1")
         c = self.project(b)
-        print("2")
 
         return c

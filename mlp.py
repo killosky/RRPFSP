@@ -33,7 +33,7 @@ class MLP(nn.Module):
             self.linears.append(nn.Linear(hidden_dim, output_dim))
 
             for layer in range(num_layers - 1):
-                self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
+                self.batch_norms.append(nn.BatchNorm2d(hidden_dim))
 
     def forward(self, x):
         if self.linear_or_not:
@@ -72,8 +72,8 @@ class MLPActor(nn.Module):
                 self.linears.append(nn.Linear(hidden_dim, hidden_dim))
             self.linears.append(nn.Linear(hidden_dim, output_dim))
 
-            for layer in range(num_layers - 1):
-                self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
+            # for layer in range(num_layers - 1):
+            #     self.batch_norms.append(nn.BatchNorm2d(hidden_dim))
 
     def forward(self, x):
         if self.linear_or_not:
@@ -81,7 +81,7 @@ class MLPActor(nn.Module):
         else:
             h = x
             for layer in range(self.num_layers - 1):
-                h = F.relu(self.batch_norms[layer](self.linears[layer](h)))
+                h = F.relu(self.linears[layer](h))
             return self.linears[self.num_layers - 1](h)
 
 
@@ -112,8 +112,8 @@ class MLPCritic(nn.Module):
                 self.linears.append(nn.Linear(hidden_dim, hidden_dim))
             self.linears.append(nn.Linear(hidden_dim, output_dim))
 
-            for layer in range(num_layers - 1):
-                self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
+            # for layer in range(num_layers - 1):
+            #     self.batch_norms.append(nn.BatchNorm2d(hidden_dim))
 
     def forward(self, x):
         if self.linear_or_not:
@@ -121,7 +121,7 @@ class MLPCritic(nn.Module):
         else:
             h = x
             for layer in range(self.num_layers - 1):
-                h = F.relu(self.batch_norms[layer](self.linears[layer](h)))
+                h = F.relu(self.linears[layer](h))
             return self.linears[self.num_layers - 1](h)
 
 
@@ -152,8 +152,8 @@ class MLPJob(nn.Module):
                 self.linears.append(nn.Linear(hidden_dim, hidden_dim))
             self.linears.append(nn.Linear(hidden_dim, output_dim))
 
-            for layer in range(num_layers - 1):
-                self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
+            # for layer in range(num_layers - 1):
+            #     self.batch_norms.append(nn.BatchNorm2d(hidden_dim))
 
     def forward(self, x):
         if self.linear_or_not:
@@ -161,5 +161,5 @@ class MLPJob(nn.Module):
         else:
             h = x
             for layer in range(self.num_layers - 1):
-                h = F.relu(self.batch_norms[layer](self.linears[layer](h)))
+                h = F.relu(self.linears[layer](h))
             return self.linears[self.num_layers - 1](h)

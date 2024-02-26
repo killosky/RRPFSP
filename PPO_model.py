@@ -213,7 +213,7 @@ class HGNNScheduler(nn.Module):
         # Operation node embedding
         self.get_operations = nn.ModuleList()
         self.get_operations.append(MLPs(in_sizes_ope_embed=[
-            self.in_size_ope, self.in_size_ope, self.in_size_ma, self.in_size_ma, self.in_size_ma, self.in_size_ope],
+            self.in_size_ope, self.in_size_ope, self.out_size_ma, self.out_size_ma, self.out_size_ma, self.in_size_ope],
             hidden_size_ope=self.hidden_size_ope, out_size_ope=self.out_size_ope, num_head=self.num_head[0],
             dropout=self.dropout, device=self.device).to(self.device))
         for i_layer_hgnn in range(self.n_layers_hgnn - 1):
@@ -261,7 +261,6 @@ class HGNNScheduler(nn.Module):
             # Machine node embedding
             h_mas, h_buf = self.get_machines[i_layer_hgnn](adj, batch_idxes, features)
             features = (features[0], h_mas, h_buf, features[3], features[4], features[5], features[6])
-            # feat_opes_batch, feat_mas_batch, feat_buf_batch
             # Operation node embedding
             h_opes = self.get_operations[i_layer_hgnn](adj, batch_idxes, features)
             features = (h_opes, features[1], features[2], features[3], features[4], features[5], features[6])
@@ -271,6 +270,8 @@ class HGNNScheduler(nn.Module):
         h_mas_pooled = torch.mean(h_mas, dim=-2)
         # Average pooling of the buffer embedding node with shape (batch_size, out_size_ma)
         h_buf_pooled = torch.mean(h_buf, dim=-2)
+        # Average pooling of the machine and buffer embedding node with shape (batch_size, out_size_ma)
+        h_mas_buf_pooled = torch.mean(torch.cat((h_mas, h_buf), dim=-2), dim=-2)
         # Average pooling of the operation embedding node with shape (batch_size, out_size_ope)
         h_opes_pooled = torch.mean(h_opes, dim=-2)
 
@@ -289,12 +290,13 @@ class HGNNScheduler(nn.Module):
         h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2)+h_buf.size(-2), -1)
         h_mas_buf_padding = torch.cat((h_mas, h_buf), dim=-2).unsqueeze(-3).expand(-1, h_opes.size(-2), -1, -1)
         h_opes_pooled_padding = h_opes_pooled[:, None, None, :].expand_as(h_opes_padding)
-        h_mas_buf_pooled_padding = torch.cat(
-            (h_mas_pooled, h_buf_pooled), dim=-1)[:, None, None, :].expand_as(h_mas_buf_padding)
+        # h_mas_buf_pooled_padding = torch.cat((h_mas_pooled[:, None, None, :].expand_as(h_mas_buf_padding),
+        #                                       h_buf_pooled[:, None, None, :].expand_as(h_mas_buf_padding)), dim=-1)
+        h_mas_buf_pooled_padding = h_mas_buf_pooled[:, None, None, :].expand_as(h_mas_buf_padding)
 
         # Input of the actor network
         h_actions = torch.cat((
-            h_opes_padding, h_mas_buf_pooled_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
+            h_opes_padding, h_mas_buf_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
         h_pooled = torch.cat((h_opes_pooled, h_mas_pooled, h_buf_pooled, h_job_pooled), dim=-1)
 
         # Get probability of actions with masking the ineligible actions
@@ -305,7 +307,8 @@ class HGNNScheduler(nn.Module):
         wait_action_scores = torch.mean(scores[:, :, :, 2], dim=(-1, -2)).unsqueeze(-1)
         wait_action_scores = wait_action_scores.masked_fill(eligible_wait == False, float('-inf'))
         # size: (len(batch_idxes), ope_num+1 * station_num+3 * 2 + 1)
-        action_scores = torch.cat((scores[:, :, :, 0], scores[:, :, :, 1], wait_action_scores), dim=-1)
+        action_scores = torch.cat(
+            (scores[:, :, :, 0].flatten(1), scores[:, :, :, 1].flatten(1), wait_action_scores), dim=-1)
         # action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
         action_probs = F.softmax(action_scores, dim=-1)
 
@@ -339,6 +342,7 @@ class HGNNScheduler(nn.Module):
                         selection_job_mask = state.ope_node_job_batch[
                                                  state.batch_idxes[i_idxes]][arc_idx[0], :, 3].squeeze()
 
+                print(state.feat_job_batch[state.batch_idxes[i_idxes]].size())
                 score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[i_idxes]])
                 score_job = score_job.masked_fill(selection_job_mask == 0, float('-inf'))
                 action_job_prob = F.softmax(score_job, dim=-1)
