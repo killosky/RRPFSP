@@ -17,8 +17,8 @@
   },
   "env_paras": {
     "device": "cpu",
-    "batch_size": 2,
-    "valid_batch_size": 32
+    "batch_size": 32,
+    "valid_batch_size": 100
   },
   "model_paras": {
     "device": "cuda:0",

@@ -38,17 +38,19 @@ if __name__ == '__main__':
     # print(matrix)
     # a = torch.ones(size=(3, 4, 5))
     # print(torch.mean(a, dim=(-1, -2)).size())
-    a1 = torch.tensor([1, 2, 3])
-    a2 = torch.tensor([4, 5])
-    a3 = torch.tensor([7, 8, 9])
-    a4 = torch.tensor([10, 11, 12, 13])
-    a5 = torch.tensor([13, 14, 15])
-    a6 = torch.tensor([16, 17])
-    list1 = [[a1, a2, a3], [a4, a5, a6]]
-    # list2 = [[a1, a4], [a2, a5], [a3, a6]]
-    print(list1)
-    # print(list2)
-    # print(transpose_list_of_tensors(list1))
-    print([item for sublist in transpose_list_of_tensors(list1) for item in sublist])
+    # a1 = torch.tensor([1, 2, 3])
+    # a2 = torch.tensor([4, 5])
+    # a3 = torch.tensor([7, 8, 9])
+    # a4 = torch.tensor([10, 11, 12, 13])
+    # a5 = torch.tensor([13, 14, 15])
+    # a6 = torch.tensor([16, 17])
+    # list1 = [[a1, a2, a3], [a4, a5, a6]]
+    # # list2 = [[a1, a4], [a2, a5], [a3, a6]]
+    # print(list1)
+    # # print(list2)
+    # # print(transpose_list_of_tensors(list1))
+    # print([item for sublist in transpose_list_of_tensors(list1) for item in sublist])
+    a = torch.tensor([10, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32)
+    print(torch.mean(a), a.std())
 
 

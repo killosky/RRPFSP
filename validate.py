@@ -44,7 +44,7 @@ def validate(env_paras, env, model_policy, device):
         with torch.no_grad():
             state.change_device(device)
             actions = model_policy.act(state, memory, dones, flag_sample=False, flag_train=False)
-        actions = actions.to(env_device)
+        actions = (actions[0].to(device), actions[1].to(device))
         state, rewards, dones = env.step(actions)
         done = dones.all()
 

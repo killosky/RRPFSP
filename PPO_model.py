@@ -11,7 +11,7 @@ from itertools import chain
 
 from graph.hgnn import GATedge, MLPsim
 from mlp import MLPActor, MLPCritic, MLPJob
-from utils import transpose_list_of_tensors
+from utils import transpose_list_of_tensors, memory_flatten
 
 
 class Memory:
@@ -23,6 +23,7 @@ class Memory:
         self.is_terminals = []
         self.action_envs = []
         self.action_job_envs = []
+        self.batch_idxes = []
 
         self.ope_ma_adj = []
         self.ope_ma_adj_out = []
@@ -49,6 +50,7 @@ class Memory:
         del self.is_terminals[:]
         del self.action_envs[:]
         del self.action_job_envs[:]
+        del self.batch_idxes[:]
 
         del self.ope_ma_adj[:]
         del self.ope_ma_adj_out[:]
@@ -153,9 +155,9 @@ def get_normalized(raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_ma_out,
 
     feat_job_normalized = []
     for i_idxes in range(len(batch_idxes)):
-        mean_jobs = torch.mean(raw_job[i_idxes], dim=-2, keepdim=True)
-        std_jobs = torch.std(raw_job[i_idxes], dim=-2, keepdim=True)
-        feat_job_normalized.append((raw_job[i_idxes] - mean_jobs) / (std_jobs + 1e-5))
+        mean_jobs = torch.mean(raw_job[batch_idxes[i_idxes]], dim=-2, keepdim=True)
+        std_jobs = torch.std(raw_job[batch_idxes[i_idxes]], dim=-2, keepdim=True)
+        feat_job_normalized.append((raw_job[batch_idxes[i_idxes]] - mean_jobs) / (std_jobs + 1e-5))
 
     return ((raw_opes - mean_opes) / (std_opes + 1e-5),
             (raw_mas - mean_mas) / (std_mas + 1e-5),
@@ -233,7 +235,7 @@ class HGNNScheduler(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def get_arc_prob(self, state):
+    def get_arc_prob(self, state, memories, flag_train=True):
         """
         Get the probability of each arc in decision-making
         """
@@ -312,12 +314,30 @@ class HGNNScheduler(nn.Module):
         # action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
         action_probs = F.softmax(action_scores, dim=-1)
 
-        return action_probs, h_pooled
+        if flag_train:
+            memories.ope_ma_adj.append(copy.deepcopy(state.ope_ma_adj))
+            memories.ope_ma_adj_out.append(copy.deepcopy(state.ope_ma_adj_out))
+            memories.ope_buf_adj.append(copy.deepcopy(state.ope_buf_adj))
+            memories.ope_buf_adj_out.append(copy.deepcopy(state.ope_buf_adj_out))
+            memories.batch_idxes.append(copy.deepcopy(batch_idxes))
+            memories.raw_opes.append(copy.deepcopy(opes_norm))
+            memories.raw_mas.append(copy.deepcopy(mas_norm))
+            memories.raw_buf.append(copy.deepcopy(buf_norm))
+            memories.raw_arc_ma_in.append(copy.deepcopy(arc_ma_in_norm))
+            memories.raw_arc_ma_out.append(copy.deepcopy(arc_ma_out_norm))
+            memories.raw_arc_buf_in.append(copy.deepcopy(arc_buf_in_norm))
+            memories.raw_arc_buf_out.append(copy.deepcopy(arc_buf_out_norm))
+            memories.raw_job.append(copy.deepcopy(job_norm))
+            memories.eligible.append(copy.deepcopy(eligible))
+            memories.eligible_wait.append(copy.deepcopy(eligible_wait))
 
-    def get_job_prob(self, state, arc_action):
+        return action_probs, h_pooled, job_norm
+
+    def get_job_prob(self, state, job_norm, arc_action):
         """
         Get the job idx corresponding to each arc selection in each batch
         :param state: state of the environment
+        :param job_norm: normalized job features
         :param arc_action: size=(num_opes + 1, num_stations + 3, 2)
         :return: job idx of the arc
         """
@@ -342,8 +362,9 @@ class HGNNScheduler(nn.Module):
                         selection_job_mask = state.ope_node_job_batch[
                                                  state.batch_idxes[i_idxes]][arc_idx[0], :, 3].squeeze()
 
-                score_job = self.get_jobs.forward(state.feat_job_batch[state.batch_idxes[i_idxes]])
+                score_job = self.get_jobs.forward(job_norm[i_idxes])
                 score_job = score_job.squeeze(-1)
+
                 score_job = score_job.masked_fill(selection_job_mask == 0, float('-inf'))
                 action_job_prob = F.softmax(score_job, dim=-1)
 
@@ -360,7 +381,7 @@ class HGNNScheduler(nn.Module):
         """
         Get actions of the env
         """
-        action_probs, _ = self.get_arc_prob(state)
+        action_probs, _, job_norm = self.get_arc_prob(state, memories, flag_train)
         dist = Categorical(action_probs)
 
         if flag_sample:
@@ -383,7 +404,7 @@ class HGNNScheduler(nn.Module):
             else:
                 pass
 
-        job_action_probs = self.get_job_prob(state, action)
+        job_action_probs = self.get_job_prob(state, job_norm, action)
         dists_job = []
         job_actions = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
         for i_batch in range(len(state.batch_idxes)):
@@ -402,22 +423,6 @@ class HGNNScheduler(nn.Module):
             memories.action_envs.append(action_index)
             memories.action_job_envs.append(job_actions)
 
-            memories.ope_ma_adj.append(copy.deepcopy(state.ope_ma_adj))
-            memories.ope_ma_adj_out.append(copy.deepcopy(state.ope_ma_adj_out))
-            memories.ope_buf_adj.append(copy.deepcopy(state.ope_buf_adj))
-            memories.ope_buf_adj_out.append(copy.deepcopy(state.ope_buf_adj_out))
-            memories.raw_opes.append(copy.deepcopy(state.feat_ope_batch))
-            memories.raw_mas.append(copy.deepcopy(state.feat_mas_batch))
-            memories.raw_buf.append(copy.deepcopy(state.feat_buf_batch))
-            memories.raw_arc_ma_in.append(copy.deepcopy(state.feat_arc_ma_in_batch))
-            memories.raw_arc_ma_out.append(copy.deepcopy(state.feat_arc_ma_out_batch))
-            memories.raw_arc_buf_in.append(copy.deepcopy(state.feat_arc_buf_in_batch))
-            memories.raw_arc_buf_out.append(copy.deepcopy(state.feat_arc_buf_out_batch))
-            memories.raw_job.append(copy.deepcopy(state.feat_job_batch))
-            memories.eligible.append(copy.deepcopy(
-                torch.cat((state.mask_mas_arc_batch, state.mask_buf_arc_batch), dim=2)))
-            memories.eligible_wait.append(copy.deepcopy(state.mask_wait_batch))
-
         return action, job_actions
 
     def evaluate(self, ope_ma_adj, ope_ma_adj_out, ope_buf_adj, ope_buf_adj_out, raw_opes, raw_mas, raw_buf,
@@ -428,13 +433,8 @@ class HGNNScheduler(nn.Module):
         """
         batch_idxes = torch.arange(0, raw_opes.size(0), dtype=torch.long, device=self.device)
 
-        # Normalized input features
-        opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_ma_out_norm, arc_buf_in_norm, arc_buf_out_norm, job_norm = \
-            get_normalized(raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_ma_out, raw_arc_buf_in, raw_arc_buf_out,
-                           raw_job, batch_idxes)
-
         # L iterations of HGNN
-        features = (opes_norm, mas_norm, buf_norm, arc_ma_in_norm, arc_buf_in_norm, arc_ma_out_norm, arc_buf_out_norm)
+        features = (raw_opes, raw_mas, raw_buf, raw_arc_ma_in, raw_arc_buf_in, raw_arc_ma_out, raw_arc_buf_out)
         adj = (ope_ma_adj, ope_ma_adj_out, ope_buf_adj, ope_buf_adj_out)
 
         for i_layer_hgnn in range(self.n_layers_hgnn):
@@ -450,24 +450,27 @@ class HGNNScheduler(nn.Module):
         h_mas_pooled = torch.mean(h_mas, dim=-2)
         # Average pooling of the buffer embedding node with shape (batch_size, out_size_ma)
         h_buf_pooled = torch.mean(h_buf, dim=-2)
+        # Average pooling of the machine and buffer embedding node with shape (batch_size, out_size_ma)
+        h_mas_buf_pooled = torch.mean(torch.cat((h_mas, h_buf), dim=-2), dim=-2)
         # Average pooling of the operation embedding node with shape (batch_size, out_size_ope)
         h_opes_pooled = torch.mean(h_opes, dim=-2)
 
         # Average polling of the job embedding node with shape (batch_size, in_size_job)
         h_job_pooled = torch.zeros(size=(len(batch_idxes), self.in_size_job), dtype=torch.float, device=self.device)
         for i_idxes in range(len(batch_idxes)):
-            h_job_pooled[i_idxes] = torch.mean(job_norm[i_idxes], dim=-2)
+            h_job_pooled[i_idxes] = torch.mean(raw_job[i_idxes], dim=-2)
 
         # Structure the tensor with the same dimension
         h_opes_padding = h_opes.unsqueeze(-2).expand(-1, -1, h_mas.size(-2) + h_buf.size(-2), -1)
         h_mas_buf_padding = torch.cat((h_mas, h_buf), dim=-2).unsqueeze(-3).expand(-1, h_opes.size(-2), -1, -1)
         h_opes_pooled_padding = h_opes_pooled[:, None, None, :].expand_as(h_opes_padding)
-        h_mas_buf_pooled_padding = torch.cat(
-            (h_mas_pooled, h_buf_pooled), dim=-1)[:, None, None, :].expand_as(h_mas_buf_padding)
+        h_mas_buf_pooled_padding = h_mas_buf_pooled[:, None, None, :].expand_as(h_mas_buf_padding)
+        # h_mas_buf_pooled_padding = torch.cat(
+        #     (h_mas_pooled, h_buf_pooled), dim=-1)[:, None, None, :].expand_as(h_mas_buf_padding)
 
         # Input of the actor network
         h_actions = torch.cat((
-            h_opes_padding, h_mas_buf_pooled_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
+            h_opes_padding, h_mas_buf_padding, h_opes_pooled_padding, h_mas_buf_pooled_padding), dim=-1)
         h_pooled = torch.cat((h_opes_pooled, h_mas_pooled, h_buf_pooled, h_job_pooled), dim=-1)
 
         # Get probability of actions with masking the ineligible actions
@@ -478,30 +481,31 @@ class HGNNScheduler(nn.Module):
         wait_action_scores = torch.mean(scores[:, :, :, 2], dim=(-1, -2)).unsqueeze(-1)
         wait_action_scores = wait_action_scores.masked_fill(eligible_wait == False, float('-inf'))
         # size: (len(batch_idxes), ope_num+1 * station_num+3 * 2 + 1)
-        action_scores = torch.cat((scores[:, :, :, 0], scores[:, :, :, 1], wait_action_scores), dim=-1)
+        # action_scores = torch.cat((scores[:, :, :, 0], scores[:, :, :, 1], wait_action_scores), dim=-1)
+        action_scores = torch.cat(
+            (scores[:, :, :, 0].flatten(1), scores[:, :, :, 1].flatten(1), wait_action_scores), dim=-1)
         # action_scores = torch.cat((no_wait_action_scores, wait_action_scores), dim=-1)
         action_probs = F.softmax(action_scores, dim=-1)
+        # print(action_probs.size())
         dist = Categorical(action_probs)
         actions_logprobs = dist.log_prob(action_envs)
         dist_entropy = dist.entropy()
 
-        action_job_probs_no_mask = []
         dist_job = []
         actions_job_logprobs = []
         dist_job_entropy = []
 
         for i_idxes in range(len(batch_idxes)):
-            score_job = self.get_jobs.forward(raw_job[batch_idxes[i_idxes]])
+            score_job = self.get_jobs.forward(raw_job[i_idxes]).squeeze(-1)
             action_job_prob = F.softmax(score_job, dim=-1)
-            action_job_probs_no_mask.append(action_job_prob)
             dist_job.append(Categorical(action_job_prob))
-            actions_job_logprobs.append(dist_job[i_idxes].log_prob(action_job_envs[i_idxes]))
-            dist_job_entropy.append(dist_job[i_idxes].entropy())
+            actions_job_logprobs.append(dist_job[-1].log_prob(action_job_envs[i_idxes]))
+            dist_job_entropy.append(dist_job[-1].entropy())
 
         # Calculate the value of the state
         state_value = self.critic.forward(h_pooled)    # size: (len(batch_idxes), 1)
 
-        return actions_logprobs, actions_job_logprobs, state_value, dist_entropy, dist_job_entropy
+        return actions_logprobs, actions_job_logprobs, state_value.squeeze(-1), dist_entropy, dist_job_entropy
 
 
 class PPO:
@@ -526,50 +530,73 @@ class PPO:
     def update(self, memory, train_paras):
         device = self.device
         minibatch_size = train_paras['minibatch_size']
+        # print(memory.logprobs)
+        # print(memory.logprobs_job)
 
         # Flatten the data in memory (in the dimension of parallel instances and decision points)
-        old_ope_ma_adj = torch.stack(memory.ope_ma_adj).to(device)
-        old_ope_ma_adj_out = torch.stack(memory.ope_ma_adj_out).to(device)
-        old_ope_buf_adj = torch.stack(memory.ope_buf_adj).to(device)
-        old_ope_buf_adj_out = torch.stack(memory.ope_buf_adj_out).to(device)
+        # old_ope_ma_adj = torch.stack(memory.ope_ma_adj).to(device)
+        # old_ope_ma_adj_out = torch.stack(memory.ope_ma_adj_out).to(device)
+        # old_ope_buf_adj = torch.stack(memory.ope_buf_adj).to(device)
+        # old_ope_buf_adj_out = torch.stack(memory.ope_buf_adj_out).to(device)
+        # old_raw_opes = torch.stack(memory.raw_opes, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_mas = torch.stack(memory.raw_mas, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_buf = torch.stack(memory.raw_buf, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_arc_ma_in = torch.stack(memory.raw_arc_ma_in, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_arc_ma_out = torch.stack(memory.raw_arc_ma_out, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_arc_buf_in = torch.stack(memory.raw_arc_buf_in, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_arc_buf_out = torch.stack(memory.raw_arc_buf_out, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_raw_job = copy.deepcopy(
+        #     [item.to(device) for sublist in transpose_list_of_tensors(memory.raw_job) for item in sublist])
+        # old_eligible = torch.stack(memory.eligible, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_eligible_wait = torch.stack(memory.eligible_wait, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_action_envs = torch.stack(memory.action_envs, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_action_job_envs = copy.deepcopy(
+        #     [item.to(device) for sublist in transpose_list_of_tensors(memory.action_job_envs) for item in sublist])
+        #
+        # memory_rewards = torch.stack(memory.rewards, dim=0).transpose(0, 1).to(device)
+        # memory_is_terminal = torch.stack(memory.is_terminals, dim=0).transpose(0, 1).to(device)
+        #
+        # old_logprobs = torch.stack(memory.logprobs, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # old_logprobs_job = torch.stack(memory.logprobs_job, dim=0).transpose(0, 1).flatten(0, 1).to(device)
 
-        old_raw_opes = torch.stack(memory.raw_opes, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_mas = torch.stack(memory.raw_mas, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_buf = torch.stack(memory.raw_buf, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_arc_ma_in = torch.stack(memory.raw_arc_ma_in, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_arc_ma_out = torch.stack(memory.raw_arc_ma_out, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_arc_buf_in = torch.stack(memory.raw_arc_buf_in, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_arc_buf_out = torch.stack(memory.raw_arc_buf_out, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_raw_job = copy.deepcopy(
-            [item.to(device) for sublist in transpose_list_of_tensors(memory.raw_job) for item in sublist])
-        old_eligible = torch.stack(memory.eligible, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_eligible_wait = torch.stack(memory.eligible_wait, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_action_envs = torch.stack(memory.action_envs, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_action_job_envs = copy.deepcopy(
-            [item.to(device) for sublist in transpose_list_of_tensors(memory.action_job_envs) for item in sublist])
+        old_ope_ma_adj, old_ope_ma_adj_out, old_ope_buf_adj, old_ope_buf_adj_out, old_raw_opes, old_raw_mas, \
+            old_raw_buf, old_raw_arc_ma_in, old_raw_arc_ma_out, old_raw_arc_buf_in, old_raw_arc_buf_out, old_raw_job, \
+            old_eligible, old_eligible_wait, old_action_envs, old_action_job_envs, memory_rewards, memory_is_terminal, \
+            old_logprobs, old_logprobs_job = memory_flatten(memory, device)
 
-        memory_rewards = torch.stack(memory.rewards, dim=0).transpose(0, 1).to(device)
-        memory_is_terminal = torch.stack(memory.is_terminal, dim=0).transpose(0, 1).to(device)
-
-        old_logprobs = torch.stack(memory.logprobs, dim=0).transpose(0, 1).flatten(0, 1).to(device)
-        old_logprobs_job = torch.stack(memory.logprobs_job, dim=0).transpose(0, 1).flatten(0, 1).to(device)
+        # print(old_raw_job)
 
         # Estimate the rewards
+        # rewards_envs = []
+        # discounted_rewards = 0
+        # for i_batch in range(self.num_envs):
+        #     rewards = []
+        #     discounted_reward = 0
+        #     for reward, is_terminal in zip(reversed(memory_rewards[i_batch]), reversed(memory_is_terminal[i_batch])):
+        #         if is_terminal:
+        #             discounted_reward = 0
+        #         discounted_reward = reward + (self.gamma * discounted_reward)
+        #         rewards.insert(0, discounted_reward)
+        #     discounted_rewards += discounted_reward
+        #     rewards = torch.tensor(rewards, dtype=torch.float, device=device)
+        #     print("rewards: ", rewards)
+        #     rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        #     rewards_envs.append(rewards)
+        # rewards_envs = torch.cat(rewards_envs)
+        # print("rewards_envs: ", rewards_envs.size())
+
         rewards_envs = []
         discounted_rewards = 0
-        for i_batch in range(self.num_envs):
-            rewards = []
-            discounted_reward = 0
-            for reward, is_terminal in zip(reversed(memory_rewards[i_batch]), reversed(memory_is_terminal[i_batch])):
-                if is_terminal:
-                    discounted_reward = 0
-                discounted_reward = reward + (self.gamma * discounted_reward)
-                rewards.insert(0, discounted_reward)
+        discounted_reward = 0
+
+        for reward, is_terminal in zip(reversed(memory_rewards), reversed(memory_is_terminal)):
+            if is_terminal:
+                discounted_reward = 0
+            discounted_reward = reward + (self.gamma * discounted_reward)
+            rewards_envs.insert(0, discounted_reward)
             discounted_rewards += discounted_reward
-            rewards = torch.tensor(rewards, dtype=torch.float, device=device)
-            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
-            rewards_envs.append(rewards)
-        rewards_envs = torch.cat(rewards_envs)
+        rewards_envs = torch.tensor(rewards_envs, dtype=torch.float, device=device)
+        rewards_envs = (rewards_envs - rewards_envs.mean()) / (rewards_envs.std() + 1e-5)
 
         loss_epochs = 0
         full_batch_size = old_raw_opes.size(0)
@@ -584,19 +611,20 @@ class PPO:
                     start_idx = i_minibatch * minibatch_size
                     end_idx = full_batch_size
 
+                # print(len(old_raw_job[start_idx:end_idx]))
+                # print(old_action_envs)
                 logprobs, logprobs_job, state_values, dist_entropy, dist_job_entropy = self.policy.evaluate(
-                    old_ope_ma_adj[start_idx:end_idx, :, :], old_ope_ma_adj_out[start_idx:end_idx, :, :],
-                    old_ope_buf_adj[start_idx:end_idx, :, :], old_ope_buf_adj_out[start_idx:end_idx, :, :],
+                    old_ope_ma_adj, old_ope_ma_adj_out, old_ope_buf_adj, old_ope_buf_adj_out,
                     old_raw_opes[start_idx:end_idx, :, :], old_raw_mas[start_idx:end_idx, :, :],
                     old_raw_buf[start_idx:end_idx, :, :], old_raw_arc_ma_in[start_idx:end_idx, :, :, :],
                     old_raw_arc_ma_out[start_idx:end_idx, :, :, :], old_raw_arc_buf_in[start_idx:end_idx, :, :, :],
-                    old_raw_arc_buf_out[start_idx:end_idx, :, :, :], old_raw_job[start_idx:end_idx][:, :],
+                    old_raw_arc_buf_out[start_idx:end_idx, :, :, :], old_raw_job[start_idx:end_idx],
                     old_eligible[start_idx:end_idx, :, :, :], old_eligible_wait[start_idx:end_idx],
-                    old_action_envs[start_idx:end_idx, :, :, :], old_action_job_envs[start_idx:end_idx])
+                    old_action_envs[start_idx:end_idx], old_action_job_envs[start_idx:end_idx])
 
                 ratios_arc = torch.exp(logprobs - old_logprobs[start_idx:end_idx].detach())
                 ratios_job = torch.exp(torch.tensor([a_job - b_job for a_job, b_job in zip(
-                    logprobs_job, old_logprobs_job[start_idx:end_idx].detach())]))
+                    logprobs_job, old_logprobs_job[start_idx:end_idx].detach())])).to(device)
                 ratios = ratios_arc + ratios_job
                 advantages = rewards_envs[start_idx:end_idx].unsqueeze(-1) - state_values.detach()
                 surr1 = ratios * advantages

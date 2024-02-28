@@ -49,7 +49,7 @@ def main():
     env_valid_paras["batch_size"] = env_paras["valid_batch_size"]
 
     model_paras["actor_in_dim"] = model_paras["out_size_ma"] * 2 + model_paras["out_size_ope"] * 2
-    model_paras["critic_in_dim"] = model_paras["out_size_ma"] + model_paras["out_size_ope"]
+    model_paras["critic_in_dim"] = model_paras["out_size_ma"] * 2 + model_paras["out_size_ope"] + model_paras["in_size_job"]
     # model_paras["job_selection_dim"] = \
     #     model_paras["out_size_ope"] + model_paras["out_size_ma"] * 2 + model_paras["in_size_job"]
 
@@ -99,7 +99,10 @@ def main():
             actions = (actions[0].to(device), actions[1].to(device))
             # print(torch.nonzero(actions[0]))
             # actions = actions.to(device)
+            # print("batch_size: ", len(env.batch_idxes))
             state, rewards, dones = env.step(actions)
+            # print("feat_opes: ", state.feat_ope_batch)
+            # print("rewards: ", rewards)
             done = dones.all()
             memories.rewards.append(copy.deepcopy(rewards).to(device_model))
             memories.is_terminals.append(copy.deepcopy(dones).to(device_model))

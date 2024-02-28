@@ -58,6 +58,7 @@ class EnvState:
     job_state_batch: list[torch.Tensor] = None
     done_job_batch: list[torch.Tensor] = None
     ope_node_job_batch: list[torch.Tensor] = None
+    job_to_buf_flag_batch: list[torch.Tensor] = None
     num_jobs_batch: torch.Tensor = None
     robot_loc_batch: torch.Tensor = None
 
@@ -69,8 +70,8 @@ class EnvState:
     def update(self, batch_idxes, mas_state_batch, mas_left_proctime_batch, feat_ope_batch, feat_mas_batch,
                feat_buf_batch, feat_arc_ma_in_batch, feat_arc_ma_out_batch, feat_arc_buf_in_batch,
                feat_arc_buf_out_batch, feat_job_batch, job_next_ope, ope_job_batch, job_loc_batch, job_loc_ma_batch,
-               job_state_batch, done_job_batch, ope_node_job_batch, num_jobs_batch, robot_loc_batch, mask_mas_arc_batch,
-               mask_buf_arc_batch, mask_job_batch, mask_wait_batch):
+               job_state_batch, done_job_batch, ope_node_job_batch, job_to_buf_flag_batch, num_jobs_batch,
+               robot_loc_batch, mask_mas_arc_batch, mask_buf_arc_batch, mask_job_batch, mask_wait_batch):
         self.batch_idxes = batch_idxes
         self.mas_state_batch = mas_state_batch
         self.mas_left_proctime_batch = mas_left_proctime_batch
@@ -87,6 +88,7 @@ class EnvState:
         self.job_loc_batch = job_loc_batch
         self.job_loc_ma_batch = job_loc_ma_batch
         self.ope_node_job_batch = ope_node_job_batch
+        self.job_to_buf_flag_batch = job_to_buf_flag_batch
 
         self.num_jobs_batch = num_jobs_batch
         self.robot_loc_batch = robot_loc_batch
@@ -426,7 +428,9 @@ class RRPFSPEnv(gym.Env):
                               feat_job_batch=self.feat_job_batch, job_next_ope=self.job_next_ope,
                               ope_job_batch=self.ope_job_batch, job_loc_batch=self.job_loc_batch,
                               job_loc_ma_batch=self.job_loc_ma_batch, done_job_batch=self.done_job_batch,
-                              ope_node_job_batch=self.ope_node_job_batch, job_state_batch=self.job_state_batch,
+                              ope_node_job_batch=self.ope_node_job_batch,
+                              job_to_buf_flag_batch=self.job_to_buf_flag_batch,
+                              job_state_batch=self.job_state_batch,
                               num_jobs_batch=self.num_jobs_batch, robot_loc_batch=self.robot_loc_batch,
                               mask_mas_arc_batch=self.mask_mas_arc_batch, mask_buf_arc_batch=self.mask_buf_arc_batch,
                               mask_job_batch=self.mask_job_batch, mask_wait_batch=self.mask_wait_batch)
@@ -572,8 +576,8 @@ class RRPFSPEnv(gym.Env):
                             self.job_state_batch[i_batch][action_job] = 0
 
                             # update feat_job_batch
-                            self.feat_job_batch[i_batch][
-                                action_job, 0] = self.proc_time_batch[i_batch][action_job][action_ope]
+                            # self.feat_job_batch[i_batch][
+                            #     action_job, 0] = self.proc_time_batch[i_batch][action_job][action_ope]
 
                             # print("-1 ", self.schedule_batch[i_batch][mas_idx][-1][3])
                             # print(self.schedule_batch[i_batch])
@@ -759,7 +763,7 @@ class RRPFSPEnv(gym.Env):
             self.feat_job_batch[i_batch][:, 0] = torch.sum(
                 self.left_proc_time_batch[i_batch] * self.ope_job_batch[i_batch].T, dim=1)
             self.feat_job_batch[i_batch][:, 1] = torch.sum(self.left_proc_time_batch[i_batch], dim=1)
-            self.feat_job_batch[i_batch][:, 1] = torch.sum((self.left_proc_time_batch[i_batch] > 0).long(), dim=1)
+            self.feat_job_batch[i_batch][:, 2] = torch.sum((self.left_proc_time_batch[i_batch] > 0).long(), dim=1)
 
             # update feat_arc_batch
             for i_ope in range(self.ope_num):
@@ -884,7 +888,8 @@ class RRPFSPEnv(gym.Env):
                           feat_job_batch=self.feat_job_batch, job_next_ope=self.job_next_ope,
                           ope_job_batch=self.ope_job_batch, job_loc_batch=self.job_loc_batch,
                           job_loc_ma_batch=self.job_loc_ma_batch, done_job_batch=self.done_job_batch,
-                          ope_node_job_batch=self.ope_node_job_batch, num_jobs_batch=self.num_jobs_batch,
+                          ope_node_job_batch=self.ope_node_job_batch, job_to_buf_flag_batch=self.job_to_buf_flag_batch,
+                          num_jobs_batch=self.num_jobs_batch,
                           robot_loc_batch=self.robot_loc_batch, mask_mas_arc_batch=self.mask_mas_arc_batch,
                           mask_buf_arc_batch=self.mask_buf_arc_batch, job_state_batch=self.job_state_batch,
                           mask_job_batch=self.mask_job_batch, mask_wait_batch=self.mask_wait_batch)
@@ -913,6 +918,7 @@ class RRPFSPEnv(gym.Env):
         self.job_loc_batch = self.state.job_loc_batch
         self.job_loc_ma_batch = self.state.job_loc_ma_batch
         self.ope_node_job_batch = self.state.ope_node_job_batch
+        self.job_to_buf_flag_batch = self.state.job_to_buf_flag_batch
 
         self.num_jobs_batch = self.state.num_jobs_batch
         self.robot_loc_batch = self.state.robot_loc_batch
@@ -922,6 +928,8 @@ class RRPFSPEnv(gym.Env):
         self.mask_buf_arc_batch = self.state.mask_buf_arc_batch
         self.mask_job_batch = self.state.mask_job_batch
         self.mask_wait_batch = self.state.mask_wait_batch
+
+        self.left_proc_time_batch = copy.deepcopy(self.proc_time_batch)
 
         schedule_batch = []
         for i_batch_case in range(self.batch_size):
