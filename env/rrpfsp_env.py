@@ -660,6 +660,7 @@ class RRPFSPEnv(gym.Env):
             self.mas_left_proctime_batch[i_batch] = torch.clamp(self.mas_left_proctime_batch[i_batch], min=0)
 
             self.reward_batch[i_batch] += torch.sum(self.mas_left_proctime_batch[i_batch, :])
+            self.reward_batch[i_batch] -= add_time_batch[i_batch] * self.mas_num
 
             job_state_change_idx = torch.nonzero(
                 self.job_loc_ma_batch[i_batch][:, mas_state_change_idx], as_tuple=True)[0]
