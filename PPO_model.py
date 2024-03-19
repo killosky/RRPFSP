@@ -596,7 +596,7 @@ class PPO:
             rewards_envs.insert(0, discounted_reward)
             discounted_rewards += discounted_reward
         rewards_envs = torch.tensor(rewards_envs, dtype=torch.float, device=device)
-        rewards_envs = (rewards_envs - rewards_envs.mean()) / (rewards_envs.std() + 1e-5)
+        # rewards_envs = (rewards_envs - rewards_envs.mean()) / (rewards_envs.std() + 1e-5)
 
         loss_epochs = 0
         full_batch_size = old_raw_opes.size(0)
