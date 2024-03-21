@@ -596,6 +596,7 @@ class PPO:
             rewards_envs.insert(0, discounted_reward)
             # discounted_rewards += discounted_reward
         rewards_envs = torch.tensor(rewards_envs, dtype=torch.float, device=device)
+        discounted_rewards = torch.sum(rewards_envs)
 
         terminal_i_idx = torch.nonzero(memory_is_terminal).squeeze()
         terminal_i_idx = torch.cat((torch.tensor([0], device=device), terminal_i_idx), dim=0)
@@ -603,8 +604,6 @@ class PPO:
             i_env_rewards = copy.deepcopy(rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]])
             i_env_rewards = (i_env_rewards - i_env_rewards.mean()) / (i_env_rewards.std() + 1e-5)
             rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]] = i_env_rewards
-
-        discounted_rewards = torch.sum(rewards_envs)
 
         loss_epochs = 0
         full_batch_size = old_raw_opes.size(0)

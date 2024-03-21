@@ -5,6 +5,7 @@ import random
 import torch
 
 from rrpfsp_env import shop_info_initial, RRPFSPEnv
+from case_generate import CaseGenerator
 
 
 def action_generate(env):
@@ -63,12 +64,15 @@ if __name__ == "__main__":
     path = os.path.abspath('.') + "/data/"
 
     shop_info = shop_info_initial(load_dict_shop)
-    valid_data_flies = os.listdir(path)
-    valid_data_flies.sort()
-    for i_valid in range(len(valid_data_flies)):
-        valid_data_flies[i_valid] = path + valid_data_flies[i_valid]
+    # valid_data_flies = os.listdir(path)
+    # valid_data_flies.sort()
+    # for i_valid in range(len(valid_data_flies)):
+    #     valid_data_flies[i_valid] = path + valid_data_flies[i_valid]
 
-    env_valid = RRPFSPEnv(case=valid_data_flies, shop_info=shop_info, env_paras=load_dict_env, data_source='file')
+    case = CaseGenerator(shop_info=shop_info, flag_doc=False)
+    env_valid = RRPFSPEnv(case=case, shop_info=shop_info, env_paras=load_dict_env, data_source='case')
+
+    # env_valid = RRPFSPEnv(case=valid_data_flies, shop_info=shop_info, env_paras=load_dict_env, data_source='file')
     random.seed(1)
 
     while ~env_valid.done:

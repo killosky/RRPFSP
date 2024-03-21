@@ -1,6 +1,6 @@
 {
-  "job_min": 5,
-  "job_max": 10,
+  "job_min": 10,
+  "job_max": 50,
   "paral_mas_num": [2, 2, 3, 2],
   "num_stations": 4,
   "routing": [1, 2, 3, 2, 4, 1],
@@ -10,7 +10,7 @@
   "trans_time_ave": 2,
   "trans_time_dev": 0,
   "trans_cap": 2,
-  "buffer_cap": 10,
+  "buffer_cap": 100,
   "load_time": 1.0,
   "unload_time": 1.0
 }

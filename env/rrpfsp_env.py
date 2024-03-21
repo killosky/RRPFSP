@@ -841,6 +841,31 @@ class RRPFSPEnv(gym.Env):
                     self.mask_mas_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_mas_finish], self.routing[
                         self.job_next_ope[i_batch][i_job_on_mas_finish]-1] - 1, 1] = True
                     self.mask_job_batch[i_batch][i_job_on_mas_finish] = True
+                    # Add action mask to overcome deadlocks
+                    if job_on_robot_idx.size(0) > self.trans_cap - 2:
+                        flag_mask = True
+                        for i_job_on_robot in job_on_robot_idx:
+                            if self.job_next_ope[i_batch][i_job_on_robot] < self.ope_num:
+                                if self.feat_mas_batch[i_batch, self.routing[
+                                                                self.job_next_ope[i_batch][i_job_on_robot]] - 1, 0] > 0:
+                                    flag_mask = False
+                                elif self.ope_node_job_batch[i_batch][self.job_next_ope[i_batch][i_job_on_robot]][
+                                    i_job_on_robot][1] == 1 and self.job_to_buf_flag_batch[i_batch][
+                                        i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]] \
+                                        and self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap:
+                                    flag_mask = False
+                            if ~flag_mask:
+                                break
+
+                            if flag_mask:
+                                if self.feat_mas_batch[i_batch, self.routing[self.job_next_ope[i_batch][
+                                        i_job_on_mas_finish]] - 1, 0] < 1:
+                                    self.mask_mas_arc_batch[i_batch, self.job_next_ope[i_batch][
+                                        i_job_on_mas_finish], self.routing[self.job_next_ope[i_batch][
+                                            i_job_on_mas_finish] - 1] - 1, 1] = False
+                                    self.mask_job_batch[i_batch][i_job_on_mas_finish] = False
+
+
                 for i_job_on_buf_idle in job_on_buf_idle_idx:
                     self.mask_buf_arc_batch[i_batch, self.job_next_ope[i_batch][i_job_on_buf_idle], torch.nonzero(
                         self.job_loc_batch[i_batch][i_job_on_buf_idle, :]).squeeze(-1)-self.station_num, 1] = True
@@ -856,8 +881,9 @@ class RRPFSPEnv(gym.Env):
                                 # elif self.job_to_buf_flag_batch[
                                         # i_batch][i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
                                 elif self.ope_node_job_batch[i_batch][self.job_next_ope[i_batch][i_job_on_robot]][
-                                                    i_job_on_robot][1] == 1 and self.job_to_buf_flag_batch[i_batch][
-                                                            i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]]:
+                                    i_job_on_robot][1] == 1 and self.job_to_buf_flag_batch[i_batch][
+                                        i_job_on_robot, self.job_next_ope[i_batch][i_job_on_robot]] \
+                                        and self.feat_buf_batch[i_batch, 1, 0] < self.buffer_cap:
                                     flag_mask = False
                             if ~flag_mask:
                                 break
@@ -869,6 +895,7 @@ class RRPFSPEnv(gym.Env):
                                     i_batch, self.job_next_ope[i_batch][i_job_on_buf_idle], torch.nonzero(
                                         self.job_loc_batch[i_batch][i_job_on_buf_idle, :]).squeeze(
                                         -1) - self.station_num, 1] = False
+                                self.mask_job_batch[i_batch][i_job_on_buf_idle] = False
 
             if torch.sum(self.feat_mas_batch[i_batch, :, 2]) == 0.:
                 self.mask_wait_batch[i_batch] = False

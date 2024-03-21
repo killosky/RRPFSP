@@ -1,7 +1,7 @@
 {
   "shop_paras": {
-    "job_min": 5,
-    "job_max": 10,
+    "job_min": 10,
+    "job_max": 50,
     "paral_mas_num": [2, 2, 3, 2],
     "num_stations": 4,
     "routing": [1, 2, 3, 2, 4, 1],
