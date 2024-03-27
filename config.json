@@ -42,7 +42,7 @@
     "dropout": 0.01
   },
   "train_paras": {
-    "lr": 0.0005,
+    "lr": 0.00002,
     "betas": [0.9, 0.999],
     "gamma": 1,
     "eps_clip": 0.2,
@@ -54,7 +54,7 @@
     "update_timestep": 1,
     "viz": true,
     "viz_name": "Paper_1005",
-    "max_iteration": 1000,
+    "max_iteration": 200,
     "parallel_iter": 20,
     "save_timestep": 10
   }

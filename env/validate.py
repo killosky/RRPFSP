@@ -1,8 +1,10 @@
 import json
 import os
 import random
+import time
 
 import torch
+import numpy as np
 
 from rrpfsp_env import shop_info_initial, RRPFSPEnv
 from case_generate import CaseGenerator
@@ -24,6 +26,11 @@ def action_generate(env):
         arc_action_selection = i_action_idx_set[i_arc_action_selection]
         # print("i_action_idx_set: ", i_action_idx_set)
         # print("arc_action_selection: ", arc_action_selection)
+        if arc_action_selection.size(0) == 0:
+            print("ope_num: ", env.ope_num)
+            print("job_location: ", torch.nonzero(env.job_loc_batch[i_batch_action]))
+            print(torch.nonzero(env.job_loc_batch[i_batch_action][:env.station_num]).size(0))
+            print("job_next_ope: ", env.job_next_ope[i_batch_action])
         if arc_action_selection[2] < 2:
             arc_action[i_batch_idx, arc_action_selection[0], arc_action_selection[1], arc_action_selection[2]] = 1
             if arc_action_selection[2] == 0:
@@ -35,6 +42,7 @@ def action_generate(env):
                 else:
                     selection_job_set = torch.nonzero(
                         env.ope_node_job_batch[i_batch_action][arc_action_selection[0], :, 1])
+
                     i_job_selection = random.randint(0, selection_job_set.size(0) - 1)
                     job_action[i_batch_idx] = selection_job_set[i_job_selection]
             else:
@@ -48,6 +56,10 @@ def action_generate(env):
                         env.ope_node_job_batch[i_batch_action][arc_action_selection[0], :, 3])
                     i_job_selection = random.randint(0, selection_job_set.size(0) - 1)
                     job_action[i_batch_idx] = selection_job_set[i_job_selection]
+
+            # print("i_batch: ", i_batch_idx)
+            # print("selection_job_set: ", selection_job_set.squeeze(-1))
+            # print("mask_job_selection: ", torch.nonzero(env.mask_job_batch[i_batch_action]).squeeze(-1))
 
     action = [arc_action, job_action]
 
@@ -63,6 +75,12 @@ if __name__ == "__main__":
 
     path = os.path.abspath('.') + "/data/"
 
+    seed = 35435
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
     shop_info = shop_info_initial(load_dict_shop)
     # valid_data_flies = os.listdir(path)
     # valid_data_flies.sort()
@@ -70,38 +88,45 @@ if __name__ == "__main__":
     #     valid_data_flies[i_valid] = path + valid_data_flies[i_valid]
 
     case = CaseGenerator(shop_info=shop_info, flag_doc=False)
-    env_valid = RRPFSPEnv(case=case, shop_info=shop_info, env_paras=load_dict_env, data_source='case')
 
-    # env_valid = RRPFSPEnv(case=valid_data_flies, shop_info=shop_info, env_paras=load_dict_env, data_source='file')
-    random.seed(1)
+    for kkk in range(1000):
 
-    while ~env_valid.done:
-        # print("mask_mas: ", torch.nonzero(env_valid.mask_mas_arc_batch))
-        # print("mask_buffer: ", torch.nonzero(env_valid.mask_buf_arc_batch))
-        # print("mask_wait: ", torch.nonzero(env_valid.mask_wait_batch))
-        action = action_generate(env_valid)
-        a, b = action
-        # if b == 8:
+        env_valid = RRPFSPEnv(case=case, shop_info=shop_info, env_paras=load_dict_env, data_source='case')
+
+        # env_valid = RRPFSPEnv(case=valid_data_flies, shop_info=shop_info, env_paras=load_dict_env, data_source='file')
+
+        time_start = time.time()
+
+        while ~env_valid.done:
+            # print("mask_mas: ", torch.nonzero(env_valid.mask_mas_arc_batch))
+            # print("mask_buffer: ", torch.nonzero(env_valid.mask_buf_arc_batch))
+            # print("mask_wait: ", torch.nonzero(env_valid.mask_wait_batch))
+            action = action_generate(env_valid)
+            a, b = action
+            # if b == 8:
+                # print("action: ", torch.nonzero(a), b)
+                # print(env_valid.job_to_buf_flag_batch[0][3, :])
+                # print("______________________________")
+            # print("ope_node_job", torch.nonzero(env_valid.ope_node_job_batch[0]))
+            # print(env_valid.job_to_buf_flag_batch)
+            # if torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]).size(0) > 0:
             # print("action: ", torch.nonzero(a), b)
-            # print(env_valid.job_to_buf_flag_batch[0][3, :])
-            # print("______________________________")
-        # print("ope_node_job", torch.nonzero(env_valid.ope_node_job_batch[0]))
-        # print(env_valid.job_to_buf_flag_batch)
-        # if torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]).size(0) > 0:
-        # print("action: ", torch.nonzero(a), b)
-        # print(env_valid.feat_job_batch)
-        env_valid.step(action)
-        # print(env_valid.feat_buf_batch)
+            # print(env_valid.feat_job_batch)
+            env_valid.step(action)
+            # print("______")
+            # print(env_valid.feat_buf_batch)
 
-        # print(env_valid.schedule_batch[0])
-        # print(env_valid.mas_left_proctime_batch)
-        # print("_______________________")
-        # print(env_valid.done_batch)
-        # print(env_valid.batch_idxes)
+            # print(env_valid.schedule_batch[0])
+            # print(env_valid.mas_left_proctime_batch)
+            # print("_______________________")
+            # print(env_valid.done_batch)
+            # print(env_valid.batch_idxes)
 
-        # print("__________________________________________________________________________")
-    # print(env_valid.job_schedule_batch)
-    # env_valid.render(job_flag=True)
+            # print("__________________________________________________________________________")
+        # print(env_valid.job_schedule_batch)
+        # env_valid.render(job_flag=True)
+        time_end = time.time()
+        print("kkk: ", kkk, "Time cost: ", time_end - time_start)
 
 
 

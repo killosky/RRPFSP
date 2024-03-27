@@ -362,6 +362,8 @@ class HGNNScheduler(nn.Module):
                         selection_job_mask = state.ope_node_job_batch[
                                                  state.batch_idxes[i_idxes]][arc_idx[0], :, 3].squeeze()
 
+                selection_job_mask = selection_job_mask * state.mask_job_batch[state.batch_idxes[i_idxes]].long()
+
                 score_job = self.get_jobs.forward(job_norm[i_idxes])
                 score_job = score_job.squeeze(-1)
 
@@ -408,13 +410,12 @@ class HGNNScheduler(nn.Module):
         dists_job = []
         job_actions = torch.zeros(size=(len(state.batch_idxes),), dtype=torch.long, device=self.device)
         for i_batch in range(len(state.batch_idxes)):
-            if torch.nonzero(job_action_probs[i_batch]).size(0) > 0:
-                dist_job = Categorical(job_action_probs[i_batch])
-                dists_job.append(dist_job)
-                if flag_sample:
-                    job_actions[i_batch] = dist_job.sample()
-                else:
-                    job_actions[i_batch] = torch.argmax(job_action_probs[i_batch], dim=-1)
+            dist_job = Categorical(job_action_probs[i_batch])
+            dists_job.append(dist_job)
+            if flag_sample:
+                job_actions[i_batch] = dist_job.sample()
+            else:
+                job_actions[i_batch] = torch.argmax(job_action_probs[i_batch], dim=-1)
 
         if flag_train:
             memories.logprobs.append(dist.log_prob(action_index))
@@ -502,6 +503,9 @@ class HGNNScheduler(nn.Module):
             actions_job_logprobs.append(dist_job[-1].log_prob(action_job_envs[i_idxes]))
             dist_job_entropy.append(dist_job[-1].entropy())
 
+        actions_job_logprobs = torch.stack(actions_job_logprobs)
+        dist_job_entropy = torch.stack(dist_job_entropy)
+
         # Calculate the value of the state
         state_value = self.critic.forward(h_pooled)    # size: (len(batch_idxes), 1)
 
@@ -586,7 +590,7 @@ class PPO:
         # print("rewards_envs: ", rewards_envs.size())
 
         rewards_envs = []
-        # discounted_rewards = 0
+        discounted_rewards = 0
         discounted_reward = 0
 
         for reward, is_terminal in zip(reversed(memory_rewards), reversed(memory_is_terminal)):
@@ -596,18 +600,19 @@ class PPO:
             rewards_envs.insert(0, discounted_reward)
             # discounted_rewards += discounted_reward
         rewards_envs = torch.tensor(rewards_envs, dtype=torch.float, device=device)
-        discounted_rewards = torch.sum(rewards_envs)
+        # discounted_rewards = torch.sum(rewards_envs)
 
         terminal_i_idx = torch.nonzero(memory_is_terminal).squeeze()
         terminal_i_idx = torch.cat((torch.tensor([0], device=device), terminal_i_idx), dim=0)
         for i_env_idx in range(self.num_envs):
             i_env_rewards = copy.deepcopy(rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]])
+            discounted_rewards += i_env_rewards[-1]
             i_env_rewards = (i_env_rewards - i_env_rewards.mean()) / (i_env_rewards.std() + 1e-5)
             rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]] = i_env_rewards
 
         loss_epochs = 0
         full_batch_size = old_raw_opes.size(0)
-        num_complete_minibatches = math.floor(full_batch_size / minibatch_size)
+        num_complete_minibatches = math.floor(full_batch_size / minibatch_size)    # 应该是这里被恰好整除了
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
             for i_minibatch in range(num_complete_minibatches+1):
@@ -617,6 +622,9 @@ class PPO:
                 else:
                     start_idx = i_minibatch * minibatch_size
                     end_idx = full_batch_size
+
+                if start_idx == end_idx:
+                    break
 
                 # print(len(old_raw_job[start_idx:end_idx]))
                 # print(old_action_envs)
@@ -630,15 +638,14 @@ class PPO:
                     old_action_envs[start_idx:end_idx], old_action_job_envs[start_idx:end_idx])
 
                 ratios_arc = torch.exp(logprobs - old_logprobs[start_idx:end_idx].detach())
-                ratios_job = torch.exp(torch.tensor([a_job - b_job for a_job, b_job in zip(
-                    logprobs_job, old_logprobs_job[start_idx:end_idx].detach())])).to(device)
-                ratios = ratios_arc + ratios_job
+                ratios_job = torch.exp(logprobs_job - old_logprobs_job[start_idx:end_idx].detach())
+                ratios = (ratios_arc + ratios_job) / 2
                 advantages = rewards_envs[start_idx:end_idx].unsqueeze(-1) - state_values.detach()
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
                 loss = - self.A_coeff * torch.min(surr1, surr2) + self.V_coeff * self.MSELoss(
-                    state_values, rewards_envs[i_minibatch * minibatch_size:(i_minibatch + 1) * minibatch_size]) \
-                    - self.entropy_coeff * dist_entropy
+                    state_values, rewards_envs[start_idx:end_idx]) \
+                    - self.entropy_coeff * (dist_entropy + dist_job_entropy)
                 loss_epochs += loss.mean().detach()
 
                 self.optimizer.zero_grad()

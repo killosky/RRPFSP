@@ -10,7 +10,7 @@
   "trans_time_ave": 2,
   "trans_time_dev": 0,
   "trans_cap": 2,
-  "buffer_cap": 100,
+  "buffer_cap": 10,
   "load_time": 1.0,
   "unload_time": 1.0
 }

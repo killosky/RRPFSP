@@ -1,7 +1,7 @@
 {
   "env_paras": {
     "device": "cpu",
-    "batch_size": 32,
+    "batch_size": 1,
     "valid_batch_size": 32
   }
 }
