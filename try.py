@@ -50,11 +50,11 @@ if __name__ == '__main__':
     # # print(list2)
     # # print(transpose_list_of_tensors(list1))
     # print([item for sublist in transpose_list_of_tensors(list1) for item in sublist])
-    # a = torch.tensor([-10, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32)
+    a = torch.tensor([-10, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32)
     # a = []
     # a = torch.stack(a)
-    batch_idxes = torch.arange(0, 1, dtype=torch.long)
-    print(batch_idxes)
+    # batch_idxes = torch.arange(0, 1, dtype=torch.long)
+    print(torch.nonzero(a))
 
     # print(torch.mean(a), a.std())
     # print(a)

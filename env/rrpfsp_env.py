@@ -512,6 +512,8 @@ class RRPFSPEnv(gym.Env):
 
                             add_time_batch[i_batch] = self.feat_arc_ma_in_batch[i_batch, action_ope, action_station, 1]
                             self.reward_batch[i_batch] += self.proc_time_batch[i_batch][action_job][action_ope]
+                            self.reward_batch[i_batch] -= self.feat_arc_ma_in_batch[
+                                i_batch, action_ope, action_station, 1]
 
                         else:
                             self.job_loc_batch[i_batch][job_actions[i_idxes], action_station] = 1
@@ -638,7 +640,7 @@ class RRPFSPEnv(gym.Env):
         for i_idxes in range(len(self.batch_idxes)):
             i_batch = self.batch_idxes[i_idxes]
 
-            self.reward_batch[i_batch] -= torch.sum(self.mas_left_proctime_batch[i_batch, :])
+            self.reward_batch[i_batch] += torch.sum(self.mas_left_proctime_batch[i_batch, :])
 
             self.ope_node_job_batch[i_batch][:] = 0
 
@@ -660,7 +662,7 @@ class RRPFSPEnv(gym.Env):
             self.mas_left_proctime_batch[i_batch] -= add_time_batch[i_batch]
             self.mas_left_proctime_batch[i_batch] = torch.clamp(self.mas_left_proctime_batch[i_batch], min=0)
 
-            self.reward_batch[i_batch] += torch.sum(self.mas_left_proctime_batch[i_batch, :])
+            self.reward_batch[i_batch] -= torch.sum(self.mas_left_proctime_batch[i_batch, :])
             self.reward_batch[i_batch] -= add_time_batch[i_batch] * self.mas_num
 
             job_state_change_idx = torch.nonzero(
@@ -918,7 +920,7 @@ class RRPFSPEnv(gym.Env):
                 self.mask_wait_batch[i_batch] = False
 
             self.time[i_batch] = next_time_batch[i_batch]
-            self.reward_batch[i_batch] = self.reward_batch[i_batch] / torch.sum(self.proc_time_batch[i_batch])
+            # self.reward_batch[i_batch] = self.reward_batch[i_batch] / torch.sum(self.proc_time_batch[i_batch])
 
         batch_idxes_update = self.batch_idxes[~self.done_batch[self.batch_idxes]]
         self.batch_idxes = batch_idxes_update

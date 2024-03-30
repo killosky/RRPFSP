@@ -24,6 +24,6 @@ def data_generate():
 
 
 if __name__ == "__main__":
-    torch.manual_seed(232)
-    random.seed(436263)
+    torch.manual_seed(32)
+    random.seed(4363)
     data_generate()
