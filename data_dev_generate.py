@@ -14,7 +14,7 @@ def data_generate():
     shop_paras = config["shop_paras"]
     env_paras = config["env_paras"]
 
-    path = os.path.abspath('.') + "/data_dev/"
+    path = os.path.abspath('.') + "/data_test/"
 
     shop_info = rrpfsp_env.shop_info_initial(shop_paras)
 
@@ -24,6 +24,6 @@ def data_generate():
 
 
 if __name__ == "__main__":
-    torch.manual_seed(32)
-    random.seed(4363)
+    torch.manual_seed(332)
+    random.seed(43463)
     data_generate()

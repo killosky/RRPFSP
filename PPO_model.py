@@ -397,12 +397,12 @@ class HGNNScheduler(nn.Module):
         for i_batch in range(len(state.batch_idxes)):
             if action_index[i_batch] < (state.ope_num+1) * (state.station_num+3):
                 action[i_batch, torch.div(action_index[i_batch], state.station_num+3, rounding_mode='trunc'),
-                       action_index[i_batch] % (state.ope_num+1), 0] = 1
+                       action_index[i_batch] % (state.station_num+3), 0] = 1
             elif (state.ope_num+1) * (state.station_num+3) <= action_index[i_batch] < (
                     state.ope_num+1) * (state.station_num+3) * 2:
                 action[i_batch, torch.div(action_index[i_batch] - (state.ope_num+1) * (state.station_num+3),
                                           state.station_num+3, rounding_mode='trunc'),
-                       (action_index[i_batch] - (state.ope_num+1) * (state.station_num+3)) % (state.ope_num+1), 1] = 1
+                       (action_index[i_batch] - (state.ope_num+1) * (state.station_num+3)) % (state.station_num+3), 1] = 1
             else:
                 pass
 
@@ -592,6 +592,7 @@ class PPO:
         rewards_envs = []
         discounted_rewards = 0
         discounted_reward = 0
+        # print("memory_rewards: ", memory_rewards)
 
         for reward, is_terminal in zip(reversed(memory_rewards), reversed(memory_is_terminal)):
             if is_terminal:
@@ -602,11 +603,12 @@ class PPO:
         rewards_envs = torch.tensor(rewards_envs, dtype=torch.float, device=device)
         # discounted_rewards = torch.sum(rewards_envs)
 
-        terminal_i_idx = torch.nonzero(memory_is_terminal).squeeze()
+        terminal_i_idx = torch.nonzero(memory_is_terminal).squeeze() + 1
         terminal_i_idx = torch.cat((torch.tensor([0], device=device), terminal_i_idx), dim=0)
+
         for i_env_idx in range(self.num_envs):
             i_env_rewards = copy.deepcopy(rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]])
-            discounted_rewards += i_env_rewards[-1]
+            discounted_rewards += i_env_rewards[0]
             i_env_rewards = (i_env_rewards - i_env_rewards.mean()) / (i_env_rewards.std() + 1e-5)
             rewards_envs[terminal_i_idx[i_env_idx]:terminal_i_idx[i_env_idx+1]] = i_env_rewards
 
@@ -639,12 +641,22 @@ class PPO:
 
                 ratios_arc = torch.exp(logprobs - old_logprobs[start_idx:end_idx].detach())
                 ratios_job = torch.exp(logprobs_job - old_logprobs_job[start_idx:end_idx].detach())
-                ratios = (ratios_arc + ratios_job) / 2
                 advantages = rewards_envs[start_idx:end_idx].unsqueeze(-1) - state_values.detach()
-                surr1 = ratios * advantages
-                surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-                loss = - self.A_coeff * torch.min(surr1, surr2) + self.V_coeff * self.MSELoss(
-                    state_values, rewards_envs[start_idx:end_idx]) \
+                # ratios = (ratios_arc + ratios_job) / 2
+                # surr1 = ratios * advantages
+                # surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+                # loss = - self.A_coeff * torch.min(surr1, surr2) + self.V_coeff * self.MSELoss(
+                #     state_values, rewards_envs[start_idx:end_idx]) \
+                #     - self.entropy_coeff * (dist_entropy + dist_job_entropy)
+                # loss_epochs += loss.mean().detach()
+
+                surr1_arc = ratios_arc * advantages
+                surr2_arc = torch.clamp(ratios_arc, 1-self.eps_clip, 1+self.eps_clip) * advantages
+                surr1_job = ratios_job * advantages
+                surr2_job = torch.clamp(ratios_job, 1-self.eps_clip, 1+self.eps_clip) * advantages
+                loss = - self.A_coeff * torch.min(surr1_arc, surr2_arc) \
+                    - self.A_coeff * torch.min(surr1_job, surr2_job) \
+                    + self.V_coeff * self.MSELoss(state_values, rewards_envs[start_idx:end_idx]) \
                     - self.entropy_coeff * (dist_entropy + dist_job_entropy)
                 loss_epochs += loss.mean().detach()
 

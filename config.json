@@ -1,7 +1,7 @@
 {
   "shop_paras": {
     "job_min": 10,
-    "job_max": 50,
+    "job_max": 20,
     "paral_mas_num": [2, 2, 3, 2],
     "num_stations": 4,
     "routing": [1, 2, 3, 2, 4, 1],
@@ -40,10 +40,10 @@
     "n_layers_job": 4,
     "action_dim": 3,
     "num_head": [1,1,1,1,1,1,1,1,1,1],
-    "dropout": 0.01
+    "dropout": 0.0
   },
   "train_paras": {
-    "lr": 0.000005,
+    "lr": 0.00005,
     "betas": [0.9, 0.999],
     "gamma": 1,
     "eps_clip": 0.2,
@@ -60,4 +60,3 @@
     "save_timestep": 10
   }
 }
-

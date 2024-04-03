@@ -11,7 +11,7 @@ def get_test_env(load_dict):
     Generate and return the validation environment from the validation set
     """
 
-    file_path = os.path.abspath('..') + "/data_dev/"
+    file_path = os.path.abspath('..') + "/data_test/"
 
     shop_info = shop_info_initial(load_dict["shop_paras"])
     env_paras = load_dict["env_paras"]
@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
     env_test = get_test_env(load_dict)
     while not env_test.done:
-        action = test_spt(env_test)
+        action = test_fifo(env_test)
         env_test.step(action)
 
     print("The makespan of FIFO method is: ", env_test.makespan_batch, env_test.makespan_batch.mean())

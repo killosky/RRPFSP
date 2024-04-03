@@ -32,6 +32,7 @@ def main():
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
+        # torch.set_default_device('cpu')
     print("PyTorch device: ", device.type)
     torch.set_printoptions(
         precision=None, threshold=np.inf, edgeitems=None, linewidth=None, profile=None, sci_mode=False)

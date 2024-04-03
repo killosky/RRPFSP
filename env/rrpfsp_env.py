@@ -574,6 +574,7 @@ class RRPFSPEnv(gym.Env):
                             self.mas_state_batch[i_batch, mas_idx] = 0
                             self.feat_mas_batch[i_batch, action_station, 0] += 1
                             self.feat_mas_batch[i_batch, action_station, 1] -= 1
+                            self.feat_mas_batch[i_batch, action_station, 5] = 1
 
                             # update the job state influenced by the actions directly
                             self.job_state_batch[i_batch][action_job] = 0
@@ -606,7 +607,7 @@ class RRPFSPEnv(gym.Env):
                                     torch.sum(self.proc_time_batch[i_batch][torch.nonzero(self.job_loc_batch[i_batch][
                                         :, action_station]).squeeze(), :]) - torch.sum(self.proc_time_batch[
                                             i_batch][action_job, :]) + 1e-6)
-                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 5] = 0
+                            self.feat_buf_batch[i_batch, action_station-self.station_num-3, 5] = 1
 
                             if action_station == self.station_num + 1:
                                 self.feat_ope_batch[i_batch, action_ope, 2] -= 1

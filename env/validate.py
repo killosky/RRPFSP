@@ -113,8 +113,8 @@ if __name__ == "__main__":
             # if torch.nonzero(env_valid.ope_node_job_batch[0][:, :, 1]).size(0) > 0:
             # print("action: ", torch.nonzero(a), b)
             # print(env_valid.feat_job_batch)
-            _, reward, _ = env_valid.step(action)
-            rewards += reward
+            env_valid.step(action)
+            # rewards += reward
 
             # print("______")
             # print(env_valid.feat_buf_batch)
@@ -129,10 +129,9 @@ if __name__ == "__main__":
         # print(env_valid.job_schedule_batch)
         # env_valid.render(job_flag=True)
         time_end = time.time()
-        print("reward: ", rewards)
-        print("makespan: ", env_valid.makespan_batch)
-        print("total processing time: ", torch.sum(env_valid.proc_time_batch[0]))
-        print("kkk: ", kkk, "Time cost: ", time_end - time_start)
+        # print("reward: ", rewards)
+        # print("makespan: ", env_valid.makespan_batch)
+        # print("total processing time: ", torch.sum(env_valid.proc_time_batch[0]))
 
 
 
