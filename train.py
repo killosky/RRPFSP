@@ -118,8 +118,10 @@ def main():
 
         # if iter mod x == 0, then update the policy
         if i_iter % train_paras["update_timestep"] == 0:
+            time_start = time.time()
             loss, reward = model.update(memories, train_paras)
             print("reward: ", '%.3f' % reward, "\tloss: ", '%.3f' % loss)
+            print("update time: ", time.time() - time_start)
             reward_iter.append(reward)
             loss_iter.append(loss)
             memories.clear_memory()

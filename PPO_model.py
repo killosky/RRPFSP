@@ -206,11 +206,11 @@ class HGNNScheduler(nn.Module):
         self.get_machines = nn.ModuleList()
         self.get_machines.append(GATedge(in_feats=(self.in_size_ope, self.in_size_ma, self.in_size_arc),
                                          out_feats=self.out_size_ma, num_head=self.num_head[0], feat_drop=self.dropout,
-                                         attn_drop=self.dropout).to(self.device))
+                                         attn_drop=self.dropout, device=self.device).to(self.device))
         for i_layer_hgnn in range(self.n_layers_hgnn - 1):
             self.get_machines.append(GATedge(in_feats=(self.out_size_ope, self.out_size_ma, self.in_size_arc),
                                              out_feats=self.out_size_ma, num_head=self.num_head[0],
-                                             feat_drop=self.dropout, attn_drop=self.dropout).to(self.device))
+                                             feat_drop=self.dropout, attn_drop=self.dropout, device=self.device).to(self.device))
 
         # Operation node embedding
         self.get_operations = nn.ModuleList()

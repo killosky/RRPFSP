@@ -22,7 +22,7 @@
     "test_batch_size": 100
   },
   "model_paras": {
-    "device": "cuda:0",
+    "device": "cpu",
     "in_size_ma": 6,
     "in_size_ope": 7,
     "in_size_arc": 3,
